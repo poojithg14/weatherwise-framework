@@ -1,0 +1,109 @@
+enum HazardType {
+    TORNADO
+    HURRICANE
+    FLASH_FLOOD
+    SEVERE_THUNDERSTORM
+    WINTER_STORM
+    WILDFIRE_SMOKE
+}
+
+enum AlertTier {
+    ADVISORY
+    ACTION_REQUIRED
+    IMMEDIATE_DANGER
+}
+
+enum ActionType {
+    CONTINUE_MONITORING
+    REROUTE
+    EXIT_TO_SHELTER
+    PULL_OVER
+    EMERGENCY_SHELTER_IN_VEHICLE
+}
+
+enum LocationType {
+    GAS_STATION
+    REST_AREA
+    TRUCK_STOP
+    HOTEL
+    HOSPITAL
+    STURDY_BUILDING
+}
+
+type Coordinate {
+    lat: Float!
+    lon: Float!
+}
+
+type TimedPolygon {
+    time: String!
+    vertices: [Coordinate!]!
+}
+
+type StormCell {
+    id: ID!
+    lat: Float!
+    lon: Float!
+    velocityX: Float!
+    velocityY: Float!
+    vil: Float!
+    rotation: Float!
+    hazardType: HazardType!
+    predictedPath: [TimedPolygon!]!
+}
+
+type TravelerPosition {
+    lat: Float!
+    lon: Float!
+    heading: Float!
+    speedMph: Float!
+    timestamp: String!
+}
+
+type RiskAssessment {
+    overallScore: Float!
+    tier: AlertTier!
+    timeToIntersectionMinutes: Float
+    recommendedAction: ActionType!
+    hazardType: HazardType
+    alertMessage: String!
+    hazardSpecificGuidance: String
+}
+
+type WeatherAlert {
+    id: ID!
+    type: HazardType!
+    severity: String!
+    polygon: [Coordinate!]!
+    effectiveTime: String!
+    expirationTime: String!
+}
+
+type SafeLocation {
+    name: String!
+    locationType: LocationType!
+    lat: Float!
+    lon: Float!
+    distanceMiles: Float!
+    hasIndoorShelter: Boolean!
+    exitNumber: String
+}
+
+type AlternateRoute {
+    waypoints: [Coordinate!]!
+    distanceMiles: Float!
+    estimatedMinutes: Float!
+    safetyScore: Float!
+}
+
+type Query {
+    travelerSafety(lat: Float!, lon: Float!, heading: Float!, speedMph: Float!): RiskAssessment!
+    activeAlerts(lat: Float!, lon: Float!, radiusMiles: Float!): [WeatherAlert!]!
+    safeLocations(lat: Float!, lon: Float!, radiusMiles: Float!): [SafeLocation!]!
+    alternateRoutes(fromLat: Float!, fromLon: Float!, toLat: Float!, toLon: Float!, avoidHazards: Boolean!): [AlternateRoute!]!
+    stormCells(lat: Float!, lon: Float!, radiusMiles: Float!): [StormCell!]!
+}
+
+type Subscription {
+    riskUpdates(lat: Float!, lon: Float!, heading: Float!, speedMph: Float!): RiskAssessment!
+}

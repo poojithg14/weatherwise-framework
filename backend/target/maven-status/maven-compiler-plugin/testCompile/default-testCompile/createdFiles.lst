@@ -1,0 +1,4 @@
+com\weatherwise\algorithm\TravelerRiskScorerTest.class
+com\weatherwise\algorithm\SafeRouteOptimizerTest.class
+com\weatherwise\WeatherwiseApplicationTests.class
+com\weatherwise\integration\EndToEndTest.class
