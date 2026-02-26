@@ -37,8 +37,8 @@ import java.util.List;
  *       the score is 1.0 for intersection within 15 min, decaying linearly to
  *       0.0 at 60 min. No intersection yields 0.0.</li>
  *   <li><b>SEVERITY (w=0.20):</b> Categorical mapping of hazard type to a
- *       fixed severity coefficient (e.g., TORNADO → 1.0, FLASH_FLOOD → 0.85,
- *       SEVERE_THUNDERSTORM → 0.65).</li>
+ *       fixed severity coefficient (e.g., TORNADO → 1.0, HURRICANE → 0.95,
+ *       FLASH_FLOOD → 0.80, SEVERE_THUNDERSTORM → 0.75).</li>
  *   <li><b>EXPOSURE (w=0.15):</b> Estimated minutes the traveler would spend
  *       inside the hazard corridor if no action is taken, normalized by 30 min.
  *       {@code score = min(1.0, exposureMinutes / 30)}.</li>
@@ -54,9 +54,10 @@ import java.util.List;
  *
  * <h4>Alert Tier Mapping</h4>
  * <ul>
- *   <li>R &lt; 0.3 → ADVISORY</li>
- *   <li>0.3 ≤ R &lt; 0.7 → ACTION_REQUIRED</li>
- *   <li>R ≥ 0.7 → IMMEDIATE_DANGER</li>
+ *   <li>R &lt; 0.25 → MONITORING</li>
+ *   <li>0.25 ≤ R &lt; 0.50 → ADVISORY</li>
+ *   <li>0.50 ≤ R &lt; 0.75 → ACTION_REQUIRED</li>
+ *   <li>R ≥ 0.75 → IMMEDIATE_DANGER</li>
  * </ul>
  *
  * <p><b>For Evaluation Suite Section IV-B (Methodology).</b></p>
@@ -81,9 +82,10 @@ public class TravelerRiskScorer {
     private static final int PROJECTION_HORIZON_MIN = 60;
     private static final int PROJECTION_STEP_MIN    = 5;
 
-    // Tier thresholds
-    private static final double TIER_ACTION_THRESHOLD = 0.3;
-    private static final double TIER_DANGER_THRESHOLD = 0.7;
+    // Tier thresholds (match paper Section IV-B)
+    private static final double TIER_ADVISORY_THRESHOLD = 0.25;
+    private static final double TIER_ACTION_THRESHOLD   = 0.50;
+    private static final double TIER_DANGER_THRESHOLD   = 0.75;
 
     /**
      * Computes a composite risk assessment for a traveler given the current
@@ -101,7 +103,7 @@ public class TravelerRiskScorer {
                                       List<SafeLocation> safeLocations,
                                       boolean isNighttime) {
         if (storms == null || storms.isEmpty()) {
-            return buildAdvisory(0.0, null);
+            return buildClearConditions(0.0, null);
         }
 
         // Find the most threatening storm (highest raw composite) and use
@@ -306,11 +308,11 @@ public class TravelerRiskScorer {
      *
      * <table>
      *   <tr><th>Hazard Type</th><th>Score</th><th>Rationale</th></tr>
-     *   <tr><td>TORNADO</td><td>1.0</td><td>EF3+ direct life threat</td></tr>
-     *   <tr><td>FLASH_FLOOD</td><td>0.85</td><td>#1 cause of weather deaths</td></tr>
+     *   <tr><td>TORNADO</td><td>1.00</td><td>EF3+ direct life threat</td></tr>
+     *   <tr><td>HURRICANE</td><td>0.95</td><td>Cat 3+ direct life threat</td></tr>
+     *   <tr><td>FLASH_FLOOD</td><td>0.80</td><td>#1 cause of weather deaths</td></tr>
+     *   <tr><td>SEVERE_THUNDERSTORM</td><td>0.75</td><td>Large hail, wind</td></tr>
      *   <tr><td>WILDFIRE_SMOKE</td><td>0.70</td><td>Near-zero visibility risk</td></tr>
-     *   <tr><td>SEVERE_THUNDERSTORM</td><td>0.65</td><td>Large hail, wind</td></tr>
-     *   <tr><td>HURRICANE</td><td>1.0</td><td>Cat 3+ direct life threat</td></tr>
      *   <tr><td>WINTER_STORM</td><td>0.55</td><td>Reduced traction, visibility</td></tr>
      * </table>
      *
@@ -321,10 +323,10 @@ public class TravelerRiskScorer {
         if (type == null) return 0.0;
         return switch (type) {
             case TORNADO              -> 1.0;
-            case HURRICANE            -> 1.0;
-            case FLASH_FLOOD          -> 0.85;
+            case HURRICANE            -> 0.95;
+            case FLASH_FLOOD          -> 0.80;
+            case SEVERE_THUNDERSTORM  -> 0.75;
             case WILDFIRE_SMOKE       -> 0.70;
-            case SEVERE_THUNDERSTORM  -> 0.65;
             case WINTER_STORM         -> 0.55;
         };
     }
@@ -413,9 +415,10 @@ public class TravelerRiskScorer {
     // -----------------------------------------------------------------------
 
     private AlertTier determineTier(double compositeScore) {
-        if (compositeScore >= TIER_DANGER_THRESHOLD) return AlertTier.IMMEDIATE_DANGER;
-        if (compositeScore >= TIER_ACTION_THRESHOLD) return AlertTier.ACTION_REQUIRED;
-        return AlertTier.ADVISORY;
+        if (compositeScore >= TIER_DANGER_THRESHOLD)   return AlertTier.IMMEDIATE_DANGER;
+        if (compositeScore >= TIER_ACTION_THRESHOLD)    return AlertTier.ACTION_REQUIRED;
+        if (compositeScore >= TIER_ADVISORY_THRESHOLD)  return AlertTier.ADVISORY;
+        return AlertTier.MONITORING;
     }
 
     /**
@@ -436,7 +439,7 @@ public class TravelerRiskScorer {
                                        TravelerPosition traveler,
                                        List<SafeLocation> safeLocations,
                                        List<StormCell> storms) {
-        if (tier == AlertTier.ADVISORY) {
+        if (tier == AlertTier.MONITORING || tier == AlertTier.ADVISORY) {
             return ActionType.CONTINUE_MONITORING;
         }
 
@@ -523,6 +526,8 @@ public class TravelerRiskScorer {
                 : "";
 
         return switch (tier) {
+            case MONITORING -> "All clear. Monitoring conditions along your route.";
+
             case ADVISORY -> String.format(
                     "Severe weather developing %.0f miles from your route. "
                   + "Currently no impact expected. Monitoring conditions.",
@@ -618,10 +623,10 @@ public class TravelerRiskScorer {
         return nearest;
     }
 
-    private RiskAssessment buildAdvisory(double score, HazardType type) {
+    private RiskAssessment buildClearConditions(double score, HazardType type) {
         return RiskAssessment.builder()
                 .overallScore(score)
-                .tier(AlertTier.ADVISORY)
+                .tier(AlertTier.MONITORING)
                 .recommendedAction(ActionType.CONTINUE_MONITORING)
                 .hazardType(type)
                 .alertMessage("No severe weather threats detected on your route. Conditions clear.")
