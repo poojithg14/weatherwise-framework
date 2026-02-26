@@ -1,224 +1,178 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 
-function WarningIcon({ size = 24, color = 'currentColor' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M12 2L1 21h22L12 2zm0 4l7.53 13H4.47L12 6z"
-        fill={color}
-      />
-      <rect x="11" y="10" width="2" height="4" fill={color} />
-      <rect x="11" y="16" width="2" height="2" fill={color} />
-    </svg>
-  );
-}
+const tierStyles = {
+  MONITORING: {
+    bg: 'bg-green-900/80 border-green-600',
+    icon: (
+      <svg className="w-5 h-5 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    text: 'text-green-200',
+    label: 'ALL CLEAR',
+  },
+  ADVISORY: {
+    bg: 'bg-yellow-900/80 border-yellow-600',
+    icon: (
+      <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    text: 'text-yellow-200',
+    label: 'ADVISORY',
+  },
+  ACTION_REQUIRED: {
+    bg: 'bg-orange-900/80 border-orange-500',
+    icon: (
+      <svg className="w-5 h-5 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+      </svg>
+    ),
+    text: 'text-orange-200',
+    label: 'ACTION REQUIRED',
+  },
+  IMMEDIATE_DANGER: {
+    bg: 'bg-red-900/90 border-red-500',
+    icon: (
+      <svg className="w-6 h-6 text-red-400 flex-shrink-0 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    text: 'text-red-100',
+    label: 'DANGER',
+  },
+};
 
-function TornadoIcon({ size = 48, color = 'currentColor' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 8h32M12 14h24M15 20h18M18 26h12M20 32h8M22 38h4" stroke={color} strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function formatTimeToImpact(minutes) {
-  if (minutes <= 0) return 'NOW';
-  if (minutes < 1) return '< 1 MIN';
-  if (minutes === 1) return '1 MIN';
-  return `${minutes} MIN`;
-}
-
-function getActionButtonLabel(actionType) {
-  switch (actionType) {
+// Map all possible action names to display info
+function getActionConfig(action) {
+  switch (action) {
     case 'REROUTE':
-      return 'VIEW REROUTE';
+      return { label: 'Take Alternate Route', color: 'bg-blue-600 hover:bg-blue-500', confirmLabel: 'Route Updated' };
+    case 'EXIT_HIGHWAY':
+    case 'PREPARE_TO_EXIT':
+      return { label: 'Exit Highway Now', color: 'bg-orange-600 hover:bg-orange-500', confirmLabel: 'Exiting Highway' };
     case 'EXIT_TO_SHELTER':
-      return 'FIND SHELTER';
-    case 'PREPARE_TO_PULL_OVER':
-      return 'PREPARE TO PULL OVER';
+    case 'SEEK_SHELTER':
+      return { label: 'Exit to Safe Location', color: 'bg-orange-600 hover:bg-orange-500', confirmLabel: 'Navigating to Shelter' };
+    case 'TAKE_COVER':
+      return { label: 'TAKE COVER NOW', color: 'bg-red-600 hover:bg-red-500 animate-pulse', confirmLabel: 'Sheltering in Place' };
+    case 'REDUCE_SPEED':
+      return { label: 'Reduce Speed', color: 'bg-yellow-600 hover:bg-yellow-500', confirmLabel: 'Speed Reduced' };
+    case 'USE_ALTERNATE_ROUTE':
+      return { label: 'Use Alternate Route', color: 'bg-blue-600 hover:bg-blue-500', confirmLabel: 'Route Updated' };
     default:
-      return 'TAKE ACTION';
+      return null;
   }
 }
 
-export default function AlertBanner({
-  tier,
-  alertMessage,
-  instruction,
-  actionType,
-  timeToImpact,
-  onActionClick,
-  onDismiss,
-}) {
-  const [dismissed, setDismissed] = useState(false);
+export default function AlertBanner({ tier, message, action, countdown, shelters, alternateRoute, onAction }) {
+  const [confirmedAction, setConfirmedAction] = useState(null);
+  const [prevTier, setPrevTier] = useState(tier);
 
-  // Reset dismissed state when tier changes
-  useEffect(() => {
-    setDismissed(false);
-  }, [tier]);
-
-  if (!tier || tier === 'NONE') return null;
-
-  // ADVISORY: Small yellow bar, dismissible
-  if (tier === 'ADVISORY') {
-    if (dismissed) return null;
-
-    return (
-      <div
-        className="absolute top-0 left-0 right-0 z-[1000] flex items-center justify-between px-4 animate-fade-in"
-        style={{
-          height: '44px',
-          backgroundColor: 'rgba(249, 168, 37, 0.95)',
-          color: '#000000',
-          borderBottom: '2px solid #F57F17',
-        }}
-        role="alert"
-        aria-live="polite"
-      >
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <WarningIcon size={20} color="#000000" />
-          <span className="font-semibold text-sm truncate">{alertMessage}</span>
-        </div>
-        <button
-          onClick={() => {
-            setDismissed(true);
-            onDismiss && onDismiss();
-          }}
-          className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-black/20 transition-colors flex-shrink-0"
-          style={{ minHeight: '32px', minWidth: '32px' }}
-          aria-label="Dismiss alert"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M4 4l8 8M12 4l-8 8" stroke="#000" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
-    );
+  // Reset confirmed state when tier or action changes
+  if (tier !== prevTier) {
+    setPrevTier(tier);
+    setConfirmedAction(null);
   }
 
-  // ACTION_REQUIRED: Large orange banner, NOT dismissible
-  if (tier === 'ACTION_REQUIRED') {
-    return (
-      <div
-        className="absolute top-0 left-0 right-0 z-[1000] flex flex-col justify-center px-4 py-3 animate-fade-in"
-        style={{
-          minHeight: '120px',
-          backgroundColor: 'rgba(230, 81, 0, 0.97)',
-          color: '#FFFFFF',
-          borderBottom: '3px solid #BF360C',
-          boxShadow: '0 4px 20px rgba(230, 81, 0, 0.5)',
-        }}
-        role="alert"
-        aria-live="assertive"
-      >
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 mt-1">
-            <WarningIcon size={32} color="#FFFFFF" />
+  if (!tier || !message) return null;
+  const style = tierStyles[tier] || tierStyles.MONITORING;
+  const actionConfig = action ? getActionConfig(action) : null;
+  const isConfirmed = confirmedAction === action;
+
+  const bestShelter = shelters?.find(s => s.hasIndoorShelter) || shelters?.[0];
+
+  const handleClick = () => {
+    setConfirmedAction(action);
+    onAction?.(action);
+  };
+
+  return (
+    <div className={`rounded-xl border-2 backdrop-blur-sm shadow-2xl ${style.bg}`}>
+      {/* Tier label bar */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10">
+        {style.icon}
+        <span className={`text-xs font-bold tracking-wider ${style.text}`}>{style.label}</span>
+        {countdown != null && countdown > 0 && (
+          <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-800/80 border border-red-600 text-red-200 text-xs font-bold tabular-nums">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {countdown} min {countdown <= 5 ? '- IMMINENT' : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Message body */}
+      <div className="px-4 py-3">
+        <p className="text-sm text-white/90 leading-relaxed">{message}</p>
+
+        {/* Shelter card — shown when shelter-related actions are active */}
+        {bestShelter && (action === 'EXIT_HIGHWAY' || action === 'EXIT_TO_SHELTER' || action === 'SEEK_SHELTER' || action === 'PREPARE_TO_EXIT') && (
+          <div className="mt-3 bg-green-900/40 border border-green-700/50 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" />
+              </svg>
+              <div>
+                <span className="text-green-300 text-sm font-bold">{bestShelter.name}</span>
+                <span className="text-green-400/70 text-xs ml-2">
+                  {bestShelter.distanceMiles != null ? `${bestShelter.distanceMiles} mi` : ''}
+                  {bestShelter.exitNumber ? ` · Exit ${bestShelter.exitNumber}` : ''}
+                </span>
+              </div>
+            </div>
+            {bestShelter.hasIndoorShelter && (
+              <span className="inline-block mt-1 ml-6 text-xs text-green-400 bg-green-800/50 px-2 py-0.5 rounded">Indoor shelter available</span>
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-bold text-lg tracking-wide">SEVERE WEATHER ALERT</span>
-              <span
-                className="flex-shrink-0 px-2 py-0.5 rounded text-sm font-bold"
-                style={{
-                  backgroundColor: 'rgba(0,0,0,0.3)',
-                  color: '#FFFFFF',
-                }}
-              >
-                {formatTimeToImpact(timeToImpact)}
+        )}
+
+        {/* Alternate route card */}
+        {alternateRoute && (action === 'REROUTE' || action === 'USE_ALTERNATE_ROUTE') && (
+          <div className="mt-3 bg-blue-900/40 border border-blue-700/50 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0020 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              <span className="text-blue-300 text-sm font-bold">Alternate Route</span>
+              <span className="text-blue-400/70 text-xs">
+                {alternateRoute.distanceMiles ? `${alternateRoute.distanceMiles} mi` : ''}
+                {alternateRoute.timeMinutes ? ` · ~${alternateRoute.timeMinutes} min` : ''}
               </span>
             </div>
-            <p className="text-base font-medium leading-snug opacity-95">
-              {alertMessage}
-            </p>
+            {alternateRoute.safetyScore && (
+              <span className="inline-block mt-1 ml-6 text-xs text-blue-400 bg-blue-800/50 px-2 py-0.5 rounded">
+                Safety score: {Math.round(alternateRoute.safetyScore * 100)}%
+              </span>
+            )}
           </div>
-        </div>
+        )}
 
-        <button
-          onClick={onActionClick}
-          className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold text-lg tracking-wide transition-colors active:scale-95"
-          style={{
-            backgroundColor: '#FFFFFF',
-            color: '#BF360C',
-            minHeight: '52px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          }}
-        >
-          {getActionButtonLabel(actionType)}
-        </button>
+        {/* Action button */}
+        {actionConfig && (
+          <div className="mt-3">
+            {isConfirmed ? (
+              <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-700/60 border border-green-600 text-green-200 text-sm font-bold">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {actionConfig.confirmLabel}
+              </div>
+            ) : (
+              <button
+                onClick={handleClick}
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold text-white transition-all active:scale-95 shadow-lg ${actionConfig.color}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+                {actionConfig.label}
+              </button>
+            )}
+          </div>
+        )}
       </div>
-    );
-  }
-
-  // IMMEDIATE_DANGER: Full screen red overlay
-  if (tier === 'IMMEDIATE_DANGER') {
-    return (
-      <div
-        className="absolute inset-0 z-[2000] flex flex-col items-center justify-center p-6 danger-overlay"
-        style={{
-          backgroundColor: 'rgba(183, 28, 28, 0.97)',
-          border: '8px solid #D32F2F',
-        }}
-        role="alert"
-        aria-live="assertive"
-      >
-        <div className="flex flex-col items-center text-center max-w-lg">
-          <TornadoIcon size={64} color="#FFFFFF" />
-
-          <h1
-            className="mt-4 font-black tracking-widest"
-            style={{
-              fontSize: 'clamp(28px, 8vw, 48px)',
-              color: '#FFFFFF',
-              textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-              lineHeight: 1.1,
-            }}
-          >
-            TORNADO DANGER
-          </h1>
-
-          <div
-            className="mt-6 px-4 py-4 rounded-lg w-full"
-            style={{
-              backgroundColor: 'rgba(0,0,0,0.35)',
-              border: '2px solid rgba(255,255,255,0.3)',
-            }}
-          >
-            <p
-              className="font-bold leading-relaxed"
-              style={{
-                fontSize: 'clamp(18px, 5vw, 28px)',
-                color: '#FFFFFF',
-              }}
-            >
-              {instruction}
-            </p>
-          </div>
-
-          <div className="mt-6 flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full animate-pulse"
-              style={{ backgroundColor: '#FF5252' }}
-            />
-            <span
-              className="font-bold text-lg tracking-wide"
-              style={{ color: '#FFCDD2' }}
-            >
-              {formatTimeToImpact(timeToImpact)} UNTIL IMPACT
-            </span>
-          </div>
-
-          <p
-            className="mt-8 text-sm opacity-70"
-            style={{ color: '#FFCDD2' }}
-          >
-            Do NOT stay in your vehicle under an overpass.
-            Get below road level if possible.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 }

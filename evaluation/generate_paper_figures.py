@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-WeatherWise IEEE Access Paper -- Additional Publication Figures
-================================================================
+WeatherWise IEEE Access Paper -- Design Figures Generator
+==========================================================
+Generates 7 design/diagram figures for the IEEE Access paper at 300 DPI.
+These are conceptual/architectural figures, not data-driven plots.
 
-Generates system-architecture, risk-score formula, alert-tier, and
-decision-tree diagrams for the WeatherWise paper.  All figures use
-IEEE-appropriate styling: white background, Arial font, 300 DPI,
-clean borders, no gridlines.
+Figures:
+    1. system_architecture.png     - 4-layer block diagram
+    2. risk_score_formula.png      - R = 0.25P + 0.30I + 0.20S + 0.15E + 0.10O
+    3. alert_tiers.png             - 4 tier boxes (green/yellow/orange/red)
+    4. decision_tree.png           - Risk scoring flowchart
+    5. ml_pipeline.png             - NOAA -> remove post-event -> add radar -> train -> deploy
+    6. london_ky_timeline.png      - T-45 to T-0 with +25 min advantage marker
+    7. evaluation_methodology.png  - Measured vs estimated labels
 
 Authors: WeatherWise Research Team
 """
@@ -14,28 +20,24 @@ Authors: WeatherWise Research Team
 from __future__ import annotations
 
 import os
-from typing import List, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import matplotlib.patches as FancyBboxPatch_mod
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-import matplotlib.patheffects as patheffects
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Output
+# Configuration
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FIG_DIR = os.path.join(SCRIPT_DIR, "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
+
 DPI = 300
 
-# ---------------------------------------------------------------------------
-# IEEE style
-# ---------------------------------------------------------------------------
+# IEEE-clean style
 plt.rcParams.update({
     "font.family": "sans-serif",
     "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
@@ -44,571 +46,526 @@ plt.rcParams.update({
     "axes.labelsize": 10,
     "figure.facecolor": "white",
     "axes.facecolor": "white",
-    "axes.edgecolor": "#333333",
-    "axes.linewidth": 0.8,
     "axes.grid": False,
 })
 
-# ---------------------------------------------------------------------------
-# Color palette for architecture layers
-# ---------------------------------------------------------------------------
-BLUE    = "#1565C0"     # data sources
-BLUE_LT = "#BBDEFB"
-GREEN   = "#2E7D32"     # GraphQL
-GREEN_LT = "#C8E6C9"
-ORANGE  = "#E65100"     # AI engine
-ORANGE_LT = "#FFE0B2"
-RED     = "#C62828"     # alerts
-RED_LT  = "#FFCDD2"
-GREY    = "#455A64"
-GREY_LT = "#ECEFF1"
 
-# ===========================================================================
-# FIGURE 1: System Architecture
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# Helper: rounded box
+# ---------------------------------------------------------------------------
 
-def _draw_box(ax, cx: float, cy: float, w: float, h: float,
-              text: str, facecolor: str, edgecolor: str,
-              fontsize: float = 9, bold: bool = False,
-              text_color: str = "#FFFFFF") -> None:
-    """Draw a rounded-rectangle box centered at (cx, cy)."""
-    box = FancyBboxPatch(
-        (cx - w / 2, cy - h / 2), w, h,
-        boxstyle="round,pad=0.02",
-        facecolor=facecolor, edgecolor=edgecolor, linewidth=1.2,
-        zorder=2,
-    )
+def draw_box(ax, x, y, w, h, text, facecolor="#E3F2FD",
+             edgecolor="#1565C0", fontsize=9, fontweight="normal",
+             textcolor="#1A237E"):
+    """Draw a rounded box with centered text."""
+    box = FancyBboxPatch((x, y), w, h,
+                         boxstyle="round,pad=0.1",
+                         facecolor=facecolor, edgecolor=edgecolor,
+                         linewidth=1.5)
     ax.add_patch(box)
-    weight = "bold" if bold else "normal"
-    ax.text(cx, cy, text, ha="center", va="center",
-            fontsize=fontsize, fontweight=weight, color=text_color,
-            zorder=3)
+    ax.text(x + w/2, y + h/2, text,
+            ha="center", va="center", fontsize=fontsize,
+            fontweight=fontweight, color=textcolor, wrap=True)
 
 
-def _draw_arrow(ax, x1: float, y1: float, x2: float, y2: float,
-                color: str = "#666666", style: str = "->") -> None:
-    """Draw an arrow from (x1,y1) to (x2,y2)."""
+def draw_arrow(ax, x1, y1, x2, y2, color="#666666"):
+    """Draw an arrow between two points."""
     ax.annotate("", xy=(x2, y2), xytext=(x1, y1),
-                arrowprops=dict(arrowstyle=style, color=color,
-                                linewidth=1.5, shrinkA=2, shrinkB=2),
-                zorder=1)
+                arrowprops=dict(arrowstyle="->", color=color, lw=1.5))
 
 
-def fig_system_architecture() -> None:
-    """4-layer architecture: Data Ingestion -> GraphQL Fusion -> AI Engine -> Alert & Rerouting."""
-    fig, ax = plt.subplots(figsize=(10, 7))
+# ---------------------------------------------------------------------------
+# Figure 1: System Architecture (4-layer block diagram)
+# ---------------------------------------------------------------------------
+
+def fig_system_architecture():
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.set_xlim(0, 12)
+    ax.set_ylim(0, 8)
+    ax.axis("off")
+
+    # Title
+    ax.text(6, 7.6, "WeatherWise System Architecture",
+            ha="center", fontsize=14, fontweight="bold", color="#1A237E")
+
+    # Layer 4 (top): Data Sources
+    layer_y = 6.5
+    ax.text(0.5, layer_y + 0.6, "Layer 1: Data Ingestion",
+            fontsize=11, fontweight="bold", color="#0D47A1")
+    sources = [("NOAA\nStorm Events", 0.5), ("NWS\nAlerts API", 3.0),
+               ("Radar\nProxy", 5.5), ("NEXRAD\nSimulated", 8.0),
+               ("EPA\nAir Quality", 10.5)]
+    for label, x in sources:
+        draw_box(ax, x, layer_y - 0.5, 2.0, 0.9, label,
+                 facecolor="#E8EAF6", edgecolor="#3F51B5", fontsize=8)
+
+    # Layer 3: Processing
+    layer_y = 4.8
+    ax.text(0.5, layer_y + 0.6, "Layer 2: ML Processing",
+            fontsize=11, fontweight="bold", color="#0D47A1")
+    proc = [("Feature\nEngineering\n(20 features)", 0.5),
+            ("XGBoost\nClassifier\n(6 hazard types)", 3.5),
+            ("Risk Scoring\nAlgorithm\n(5-factor weighted)", 7.0),
+            ("Route\nOptimizer\n(Dijkstra)", 10.0)]
+    for label, x in proc:
+        draw_box(ax, x, layer_y - 0.5, 2.5, 1.0, label,
+                 facecolor="#E8F5E9", edgecolor="#388E3C", fontsize=8)
+
+    # Layer 2: API
+    layer_y = 3.0
+    ax.text(0.5, layer_y + 0.6, "Layer 3: GraphQL API (Spring Boot + DGS)",
+            fontsize=11, fontweight="bold", color="#0D47A1")
+    api = [("activeStormCells", 0.5), ("weatherAlerts", 2.8),
+           ("travelerRiskScore", 5.1), ("safeRoute", 7.4),
+           ("nearestSafe\nLocations", 9.7)]
+    for label, x in api:
+        draw_box(ax, x, layer_y - 0.4, 2.1, 0.8, label,
+                 facecolor="#FFF3E0", edgecolor="#E65100", fontsize=7)
+
+    # Layer 1 (bottom): Frontend
+    layer_y = 1.2
+    ax.text(0.5, layer_y + 0.6, "Layer 4: React Frontend",
+            fontsize=11, fontweight="bold", color="#0D47A1")
+    front = [("Interactive\nMap", 0.5), ("Risk\nGauge", 3.0),
+             ("Alert\nBanner", 5.5), ("Route\nDisplay", 8.0),
+             ("Scenario\nSelector", 10.5)]
+    for label, x in front:
+        draw_box(ax, x, layer_y - 0.4, 2.0, 0.8, label,
+                 facecolor="#FCE4EC", edgecolor="#C62828", fontsize=8)
+
+    # Arrows between layers
+    for x in [1.5, 4.0, 6.5, 9.0, 11.0]:
+        draw_arrow(ax, x, 5.9, x, 5.5)
+    for x in [1.75, 4.75, 8.25, 11.0]:
+        draw_arrow(ax, x, 4.25, x, 3.75)
+    for x in [1.5, 3.85, 6.15, 8.45, 10.75]:
+        draw_arrow(ax, x, 2.55, x, 2.1)
+
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "system_architecture.png")
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
+
+# ---------------------------------------------------------------------------
+# Figure 2: Risk Score Formula
+# ---------------------------------------------------------------------------
+
+def fig_risk_score_formula():
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 5)
+    ax.axis("off")
+
+    ax.text(5, 4.5, "WeatherWise Composite Risk Score",
+            ha="center", fontsize=14, fontweight="bold", color="#1A237E")
+
+    # Main formula
+    ax.text(5, 3.5,
+            r"$R = 0.25 \cdot P + 0.30 \cdot I + 0.20 \cdot S + 0.15 \cdot E + 0.10 \cdot O$",
+            ha="center", fontsize=16, fontweight="bold",
+            color="#0D47A1",
+            bbox=dict(facecolor="#E3F2FD", edgecolor="#1565C0",
+                      boxstyle="round,pad=0.4", lw=2))
+
+    # Factor descriptions
+    factors = [
+        ("P", "Proximity", "0.25", "Log-decay distance to hazard", "#E8F5E9"),
+        ("I", "Intersection", "0.30", "Time-to-collision probability", "#E3F2FD"),
+        ("S", "Severity", "0.20", "Hazard intensity coefficient", "#FFF3E0"),
+        ("E", "Exposure", "0.15", "Duration in risk zone", "#FCE4EC"),
+        ("O", "Escape Options", "0.10", "Inverse of nearby exit count", "#F3E5F5"),
+    ]
+
+    y = 2.5
+    for sym, name, weight, desc, color in factors:
+        draw_box(ax, 0.3, y - 0.3, 0.5, 0.5, sym,
+                 facecolor=color, edgecolor="#333", fontsize=11,
+                 fontweight="bold")
+        ax.text(1.1, y, f"{name} (w={weight})",
+                fontsize=10, fontweight="bold", va="center", color="#333")
+        ax.text(4.0, y, desc,
+                fontsize=9, va="center", color="#666")
+        y -= 0.55
+
+    # Score range
+    ax.text(5, 0.2, "Score Range: 0.0 (no risk) to 1.0 (maximum risk)",
+            ha="center", fontsize=9, fontstyle="italic", color="#888")
+
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "risk_score_formula.png")
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
+
+# ---------------------------------------------------------------------------
+# Figure 3: Alert Tiers
+# ---------------------------------------------------------------------------
+
+def fig_alert_tiers():
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 4)
+    ax.axis("off")
+
+    ax.text(5, 3.6, "WeatherWise Alert Tier System",
+            ha="center", fontsize=14, fontweight="bold", color="#1A237E")
+
+    tiers = [
+        ("MONITORING", "R < 0.25", "Normal driving\nconditions",
+         "#4CAF50", "#E8F5E9", "#1B5E20"),
+        ("ADVISORY", "0.25 \u2264 R < 0.50", "Hazard detected;\nproceed with caution",
+         "#FFC107", "#FFF8E1", "#F57F17"),
+        ("ACTION REQUIRED", "0.50 \u2264 R < 0.75", "Seek alternate route\nor shelter",
+         "#FF9800", "#FFF3E0", "#E65100"),
+        ("IMMEDIATE DANGER", "R \u2265 0.75", "Pull over NOW;\ntake shelter",
+         "#F44336", "#FFEBEE", "#B71C1C"),
+    ]
+
+    x = 0.3
+    for name, threshold, action, border_color, bg_color, text_color in tiers:
+        box = FancyBboxPatch((x, 0.5), 2.2, 2.8,
+                             boxstyle="round,pad=0.15",
+                             facecolor=bg_color, edgecolor=border_color,
+                             linewidth=3)
+        ax.add_patch(box)
+
+        ax.text(x + 1.1, 3.0, name,
+                ha="center", fontsize=9, fontweight="bold", color=text_color)
+        ax.text(x + 1.1, 2.4, threshold,
+                ha="center", fontsize=10, fontweight="bold",
+                color="#333",
+                bbox=dict(facecolor="white", edgecolor=border_color,
+                          boxstyle="round,pad=0.15", lw=1))
+        ax.text(x + 1.1, 1.4, action,
+                ha="center", fontsize=8, color="#555")
+
+        if x < 7:
+            draw_arrow(ax, x + 2.3, 1.9, x + 2.5, 1.9, color="#999")
+
+        x += 2.4
+
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "alert_tiers.png")
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
+
+# ---------------------------------------------------------------------------
+# Figure 4: Decision Tree / Flowchart
+# ---------------------------------------------------------------------------
+
+def fig_decision_tree():
+    fig, ax = plt.subplots(figsize=(10, 8))
     ax.set_xlim(0, 10)
     ax.set_ylim(0, 8)
     ax.axis("off")
 
-    # ---- Layer 1: Data Sources (bottom) ----
-    layer1_y = 1.2
-    sources = [
-        ("NWS\nAlerts API", 1.5),
-        ("NEXRAD\nRadar", 3.5),
-        ("EPA\nAirNow", 5.5),
-        ("USGS\nStream\nGauges", 7.5),
-        ("Satellite\nImagery", 9.0),
-    ]
-    # Layer background
-    layer_bg = FancyBboxPatch(
-        (0.3, layer1_y - 0.55), 9.4, 1.1,
-        boxstyle="round,pad=0.05", facecolor=BLUE_LT, edgecolor=BLUE,
-        linewidth=0.8, alpha=0.3, zorder=0)
-    ax.add_patch(layer_bg)
-    ax.text(0.15, layer1_y, "Data\nIngestion", ha="center", va="center",
-            fontsize=8, fontweight="bold", color=BLUE, rotation=90)
+    ax.text(5, 7.6, "WeatherWise Risk Assessment Decision Flow",
+            ha="center", fontsize=14, fontweight="bold", color="#1A237E")
 
-    for label, cx in sources:
-        _draw_box(ax, cx, layer1_y, 1.4, 0.85, label,
-                  facecolor=BLUE, edgecolor="#0D47A1",
-                  fontsize=7.5, text_color="white")
+    # Nodes
+    draw_box(ax, 3.0, 6.5, 4.0, 0.8, "Receive Radar/NWS Data",
+             facecolor="#E8EAF6", edgecolor="#3F51B5", fontsize=10,
+             fontweight="bold")
 
-    # ---- Layer 2: GraphQL Fusion ----
-    layer2_y = 3.0
-    gql_boxes = [
-        ("Schema\nStitching", 2.0),
-        ("Federation\nGateway", 5.0),
-        ("WebSocket\nSubscriptions", 8.0),
-    ]
-    layer_bg2 = FancyBboxPatch(
-        (0.3, layer2_y - 0.55), 9.4, 1.1,
-        boxstyle="round,pad=0.05", facecolor=GREEN_LT, edgecolor=GREEN,
-        linewidth=0.8, alpha=0.3, zorder=0)
-    ax.add_patch(layer_bg2)
-    ax.text(0.15, layer2_y, "GraphQL\nFusion", ha="center", va="center",
-            fontsize=8, fontweight="bold", color=GREEN, rotation=90)
+    draw_box(ax, 3.0, 5.2, 4.0, 0.8, "ML Hazard Classification\n(XGBoost, 6 classes)",
+             facecolor="#E8F5E9", edgecolor="#388E3C", fontsize=9)
 
-    for label, cx in gql_boxes:
-        _draw_box(ax, cx, layer2_y, 1.8, 0.85, label,
-                  facecolor=GREEN, edgecolor="#1B5E20",
-                  fontsize=8, text_color="white")
+    draw_box(ax, 3.0, 3.9, 4.0, 0.8, "Compute 5-Factor Risk Score\n(R = weighted sum)",
+             facecolor="#FFF3E0", edgecolor="#E65100", fontsize=9)
 
-    # Arrows layer 1 -> layer 2
-    for _, sx in sources:
-        # Find nearest gql box
-        nearest = min(gql_boxes, key=lambda b: abs(b[1] - sx))
-        _draw_arrow(ax, sx, layer1_y + 0.45, nearest[1], layer2_y - 0.45,
-                    color=BLUE)
+    # Decision diamond
+    diamond_x, diamond_y = 5.0, 2.8
+    diamond = plt.Polygon(
+        [(diamond_x, diamond_y + 0.5),
+         (diamond_x + 1.2, diamond_y),
+         (diamond_x, diamond_y - 0.5),
+         (diamond_x - 1.2, diamond_y)],
+        facecolor="#FFF9C4", edgecolor="#F9A825", lw=2)
+    ax.add_patch(diamond)
+    ax.text(diamond_x, diamond_y, "R \u2265 0.25?",
+            ha="center", va="center", fontsize=9, fontweight="bold")
 
-    # ---- Layer 3: AI Engine ----
-    layer3_y = 4.8
-    ai_boxes = [
-        ("Geometric\nIntersection", 1.8),
-        ("Risk Scorer\n(5-component)", 4.2),
-        ("Path\nProjection", 6.6),
-        ("Safe Route\nOptimizer", 9.0),
-    ]
-    layer_bg3 = FancyBboxPatch(
-        (0.3, layer3_y - 0.55), 9.4, 1.1,
-        boxstyle="round,pad=0.05", facecolor=ORANGE_LT, edgecolor=ORANGE,
-        linewidth=0.8, alpha=0.3, zorder=0)
-    ax.add_patch(layer_bg3)
-    ax.text(0.15, layer3_y, "AI\nEngine", ha="center", va="center",
-            fontsize=8, fontweight="bold", color=ORANGE, rotation=90)
+    # Outcomes
+    draw_box(ax, 0.5, 1.5, 2.5, 0.7, "MONITORING\n(no action)",
+             facecolor="#E8F5E9", edgecolor="#4CAF50", fontsize=9,
+             fontweight="bold", textcolor="#1B5E20")
 
-    for label, cx in ai_boxes:
-        _draw_box(ax, cx, layer3_y, 1.7, 0.85, label,
-                  facecolor=ORANGE, edgecolor="#BF360C",
-                  fontsize=8, text_color="white")
+    draw_box(ax, 7.0, 1.5, 2.5, 0.7, "Generate Alert\n+ Reroute Options",
+             facecolor="#FFEBEE", edgecolor="#F44336", fontsize=9,
+             fontweight="bold", textcolor="#B71C1C")
 
-    # Arrows layer 2 -> layer 3
-    for _, sx in gql_boxes:
-        nearest = min(ai_boxes, key=lambda b: abs(b[1] - sx))
-        _draw_arrow(ax, sx, layer2_y + 0.45, nearest[1], layer3_y - 0.45,
-                    color=GREEN)
+    draw_box(ax, 7.0, 0.3, 2.5, 0.7, "Push to Traveler\nvia WebSocket",
+             facecolor="#FCE4EC", edgecolor="#C62828", fontsize=9)
 
-    # ---- Layer 4: Alert & Rerouting ----
-    layer4_y = 6.6
-    alert_boxes = [
-        ("ADVISORY\nTier", 2.0),
-        ("ACTION\nREQUIRED Tier", 5.0),
-        ("IMMEDIATE\nDANGER Tier", 8.0),
-    ]
-    alert_colors = ["#1976D2", "#F57C00", "#D32F2F"]
-    layer_bg4 = FancyBboxPatch(
-        (0.3, layer4_y - 0.55), 9.4, 1.1,
-        boxstyle="round,pad=0.05", facecolor=RED_LT, edgecolor=RED,
-        linewidth=0.8, alpha=0.3, zorder=0)
-    ax.add_patch(layer_bg4)
-    ax.text(0.15, layer4_y, "Alert &\nRerouting", ha="center", va="center",
-            fontsize=8, fontweight="bold", color=RED, rotation=90)
+    # Arrows
+    draw_arrow(ax, 5.0, 6.5, 5.0, 6.05)
+    draw_arrow(ax, 5.0, 5.2, 5.0, 4.75)
+    draw_arrow(ax, 5.0, 3.9, 5.0, 3.35)
 
-    for (label, cx), color in zip(alert_boxes, alert_colors):
-        _draw_box(ax, cx, layer4_y, 1.8, 0.85, label,
-                  facecolor=color, edgecolor="#B71C1C",
-                  fontsize=8, bold=True, text_color="white")
+    # No branch (left)
+    ax.annotate("", xy=(1.75, 2.25), xytext=(3.8, 2.8),
+                arrowprops=dict(arrowstyle="->", color="#4CAF50", lw=1.5))
+    ax.text(2.3, 2.6, "No", fontsize=9, fontweight="bold", color="#4CAF50")
 
-    # Arrows layer 3 -> layer 4
-    for _, sx in ai_boxes:
-        nearest = min(alert_boxes, key=lambda b: abs(b[1] - sx))
-        _draw_arrow(ax, sx, layer3_y + 0.45, nearest[1], layer4_y - 0.45,
-                    color=ORANGE)
+    # Yes branch (right)
+    ax.annotate("", xy=(8.25, 2.25), xytext=(6.2, 2.8),
+                arrowprops=dict(arrowstyle="->", color="#F44336", lw=1.5))
+    ax.text(7.2, 2.6, "Yes", fontsize=9, fontweight="bold", color="#F44336")
 
-    ax.set_title("WeatherWise System Architecture", fontsize=14,
-                 fontweight="bold", pad=15)
+    # Arrow from alert to push
+    draw_arrow(ax, 8.25, 1.5, 8.25, 1.05)
 
-    fig.tight_layout()
-    path = os.path.join(FIG_DIR, "system_architecture.png")
-    fig.savefig(path, dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "decision_tree.png")
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {path}")
 
 
-# ===========================================================================
-# FIGURE 2: Risk Score Formula
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# Figure 5: ML Pipeline
+# ---------------------------------------------------------------------------
 
-def fig_risk_score_formula() -> None:
-    """Visualization of the 5-component weighted-sum risk formula."""
-    fig, ax = plt.subplots(figsize=(10, 5.5))
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 6)
+def fig_ml_pipeline():
+    fig, ax = plt.subplots(figsize=(14, 4))
+    ax.set_xlim(0, 14)
+    ax.set_ylim(0, 4)
     ax.axis("off")
 
-    # Title
-    ax.text(5.0, 5.5, "WeatherWise Composite Risk Score Formula",
-            ha="center", va="center", fontsize=14, fontweight="bold")
+    ax.text(7, 3.6, "WeatherWise ML Training Pipeline",
+            ha="center", fontsize=14, fontweight="bold", color="#1A237E")
 
-    # Main formula
-    formula = (r"$R \;=\; w_1 \cdot \mathrm{PROXIMITY}"
-               r"\;+\; w_2 \cdot \mathrm{INTERSECTION}"
-               r"\;+\; w_3 \cdot \mathrm{SEVERITY}"
-               r"\;+\; w_4 \cdot \mathrm{EXPOSURE}"
-               r"\;+\; w_5 \cdot \mathrm{ESCAPE}$")
-    ax.text(5.0, 4.7, formula, ha="center", va="center", fontsize=11)
-
-    # Component detail boxes
-    components = [
-        ("PROXIMITY",    "w = 0.25", BLUE,   "Logarithmic decay\nof distance to hazard",
-         r"$\max(0,\; 1 - \frac{\log_{10}(d+1)}{\log_{10}(51)})$"),
-        ("INTERSECTION", "w = 0.30", GREEN,  "Forward path projection\nat 5-min intervals",
-         "1.0 if t\u226415, linear\ndecay to 0.0 at t=60"),
-        ("SEVERITY",     "w = 0.20", ORANGE, "Hazard-type coefficient\n(TORNADO=1.0, etc.)",
-         r"$c_{hazard}$"),
-        ("EXPOSURE",     "w = 0.15", "#7B1FA2", "Minutes inside corridor\nnormalized by 30 min",
-         r"$\min(1.0,\; \frac{t_{inside}}{30})$"),
-        ("ESCAPE",       "w = 0.10", RED,    "Inverse of nearby\nsafe-exit availability",
-         r"$f(exits_{5mi}, exits_{10mi})$"),
+    steps = [
+        ("NOAA Storm\nEvents DB\n(315K records)", 0.2, "#E8EAF6", "#3F51B5"),
+        ("Remove\nPost-Event\nFeatures", 2.6, "#FFEBEE", "#F44336"),
+        ("Add Synthetic\nRadar-Proxy\nFeatures (7)", 5.0, "#FFF3E0", "#E65100"),
+        ("Train Models\n(XGB, RF, LR)\n5-fold CV", 7.4, "#E8F5E9", "#388E3C"),
+        ("Ablation\nStudy\n(9 groups)", 9.8, "#F3E5F5", "#7B1FA2"),
+        ("Deploy\nBest Model\n(Flask API)", 12.2, "#E3F2FD", "#1565C0"),
     ]
 
-    box_w = 1.65
-    box_h = 1.8
-    start_x = 0.5
-    spacing = 1.85
+    for label, x, bg, edge in steps:
+        draw_box(ax, x, 1.0, 2.0, 2.0, label,
+                 facecolor=bg, edgecolor=edge, fontsize=9, fontweight="bold")
 
-    for i, (name, weight, color, desc, formula_str) in enumerate(components):
-        cx = start_x + i * spacing + box_w / 2
+    for i in range(len(steps) - 1):
+        x1 = steps[i][1] + 2.0
+        x2 = steps[i + 1][1]
+        draw_arrow(ax, x1 + 0.05, 2.0, x2 - 0.05, 2.0, color="#666")
 
-        # Colored header bar
-        header = FancyBboxPatch(
-            (cx - box_w / 2, 3.65), box_w, 0.45,
-            boxstyle="round,pad=0.02",
-            facecolor=color, edgecolor=color, linewidth=1.0, zorder=2)
-        ax.add_patch(header)
-        ax.text(cx, 3.87, name, ha="center", va="center",
-                fontsize=7, fontweight="bold", color="white", zorder=3)
+    # Feature counts annotation
+    ax.text(1.2, 0.6, "51 columns", fontsize=7, ha="center",
+            color="#666", fontstyle="italic")
+    ax.text(3.6, 0.6, "Remove deaths,\ninjuries, damage,\ntor_scale",
+            fontsize=7, ha="center", color="#F44336", fontstyle="italic")
+    ax.text(6.0, 0.6, "CAPE, VIL, shear,\nrotation, echo_top,\npressure, dewpoint",
+            fontsize=7, ha="center", color="#E65100", fontstyle="italic")
+    ax.text(8.4, 0.6, "20 features\n6 hazard classes",
+            fontsize=7, ha="center", color="#388E3C", fontstyle="italic")
 
-        # Weight badge
-        ax.text(cx, 3.35, weight, ha="center", va="center",
-                fontsize=9, fontweight="bold", color=color,
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                          edgecolor=color, linewidth=0.8))
-
-        # Description
-        ax.text(cx, 2.65, desc, ha="center", va="center",
-                fontsize=7, color="#424242")
-
-        # Formula
-        ax.text(cx, 1.85, formula_str, ha="center", va="center",
-                fontsize=8, color="#333333")
-
-        # Surrounding box
-        outer = FancyBboxPatch(
-            (cx - box_w / 2, 1.3), box_w, box_h,
-            boxstyle="round,pad=0.03",
-            facecolor="#FAFAFA", edgecolor=color, linewidth=0.8,
-            alpha=0.5, zorder=0)
-        ax.add_patch(outer)
-
-    # Tier mapping at bottom
-    ax.text(5.0, 0.65, "Alert Tier Mapping:", ha="center", va="center",
-            fontsize=10, fontweight="bold", color="#333333")
-    tier_text = (r"$R < 0.30 \rightarrow$ ADVISORY"
-                 r"     |     "
-                 r"$0.30 \leq R < 0.70 \rightarrow$ ACTION REQUIRED"
-                 r"     |     "
-                 r"$R \geq 0.70 \rightarrow$ IMMEDIATE DANGER")
-    ax.text(5.0, 0.25, tier_text, ha="center", va="center", fontsize=9,
-            color="#555555")
-
-    fig.tight_layout()
-    path = os.path.join(FIG_DIR, "risk_score_formula.png")
-    fig.savefig(path, dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "ml_pipeline.png")
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {path}")
 
 
-# ===========================================================================
-# FIGURE 3: Alert Tiers
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# Figure 6: London KY Timeline
+# ---------------------------------------------------------------------------
 
-def fig_alert_tiers() -> None:
-    """Visual of 3 alert tiers with colors, thresholds, descriptions."""
-    fig, ax = plt.subplots(figsize=(9, 5))
+def fig_london_ky_timeline():
+    fig, ax = plt.subplots(figsize=(12, 4))
+    ax.set_xlim(-50, 5)
+    ax.set_ylim(0, 4)
+    ax.axis("off")
+
+    ax.text(-22.5, 3.6, "London KY EF-4 Tornado: Alert Timeline (May 16, 2025)",
+            ha="center", fontsize=14, fontweight="bold", color="#1A237E")
+
+    # Timeline axis
+    ax.plot([-48, 2], [2.0, 2.0], "k-", lw=2)
+
+    # Tick marks
+    ticks = [-45, -37, -30, -20, -12, -5, 0]
+    for t in ticks:
+        ax.plot([t, t], [1.85, 2.15], "k-", lw=1.5)
+        ax.text(t, 1.6, f"T{t:+d}", ha="center", fontsize=8, color="#333")
+
+    # T=0 impact marker
+    ax.plot(0, 2.0, "rv", markersize=15, zorder=5)
+    ax.text(0, 1.2, "IMPACT", ha="center", fontsize=9, fontweight="bold",
+            color="#B71C1C")
+
+    # WeatherWise alert at T-37
+    ax.plot(-37, 2.0, "s", markersize=12, color="#1565C0", zorder=5)
+    ax.text(-37, 2.6, "WeatherWise\nADVISORY",
+            ha="center", fontsize=8, fontweight="bold", color="#1565C0")
+
+    # NWS warning at T-12
+    ax.plot(-12, 2.0, "o", markersize=12, color="#607D8B", zorder=5)
+    ax.text(-12, 2.6, "NWS Tornado\nWarning",
+            ha="center", fontsize=8, fontweight="bold", color="#607D8B")
+
+    # Advantage annotation
+    ax.annotate("", xy=(-37, 2.95), xytext=(-12, 2.95),
+                arrowprops=dict(arrowstyle="<->", color="#FF6F00", lw=2))
+    ax.text(-24.5, 3.15, "+25 min advantage",
+            ha="center", fontsize=10, fontweight="bold", color="#FF6F00",
+            bbox=dict(facecolor="#FFF3E0", edgecolor="#FF6F00",
+                      boxstyle="round,pad=0.2", lw=1.5))
+
+    # WeatherWise escalation markers
+    ww_events = [
+        (-37, "ADVISORY", "#FFC107"),
+        (-25, "ACTION\nREQUIRED", "#FF9800"),
+        (-10, "IMMEDIATE\nDANGER", "#F44336"),
+    ]
+    for t, label, color in ww_events:
+        ax.plot(t, 2.0, "s", markersize=8, color=color, zorder=4)
+
+    # Legend
+    leg_items = [
+        plt.Line2D([0], [0], marker="s", color="w", markerfacecolor="#1565C0",
+                    markersize=8, label="WeatherWise Alert"),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#607D8B",
+                    markersize=8, label="NWS Warning"),
+        plt.Line2D([0], [0], marker="v", color="w", markerfacecolor="red",
+                    markersize=8, label="Impact"),
+    ]
+    ax.legend(handles=leg_items, loc="lower left", fontsize=8,
+              frameon=True, edgecolor="#CCC")
+
+    # Note
+    ax.text(-22.5, 0.3,
+            "Note: WeatherWise times are estimated from Monte Carlo "
+            "simulation (mean=37 min, 95% CI: [28, 46])",
+            ha="center", fontsize=7, color="#888", fontstyle="italic")
+
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "london_ky_timeline.png")
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
+
+# ---------------------------------------------------------------------------
+# Figure 7: Evaluation Methodology
+# ---------------------------------------------------------------------------
+
+def fig_evaluation_methodology():
+    fig, ax = plt.subplots(figsize=(10, 7))
     ax.set_xlim(0, 10)
     ax.set_ylim(0, 7)
     ax.axis("off")
 
-    ax.text(5.0, 6.6, "WeatherWise Alert Tier System",
-            ha="center", va="center", fontsize=14, fontweight="bold")
+    ax.text(5, 6.6, "WeatherWise Evaluation Methodology",
+            ha="center", fontsize=14, fontweight="bold", color="#1A237E")
 
-    tiers = [
-        {
-            "name": "ADVISORY",
-            "threshold": "R < 0.30",
-            "color": "#1976D2",
-            "light": "#BBDEFB",
-            "icon_text": "i",
-            "action": "CONTINUE MONITORING",
-            "description": (
-                "Severe weather developing in the area but not yet\n"
-                "expected to impact traveler's route.  System continues\n"
-                "monitoring and will escalate if conditions change."
-            ),
-            "guidance": "No action needed. Stay informed.",
-        },
-        {
-            "name": "ACTION REQUIRED",
-            "threshold": "0.30 <= R < 0.70",
-            "color": "#F57C00",
-            "light": "#FFE0B2",
-            "icon_text": "!",
-            "action": "REROUTE / EXIT TO SHELTER / PULL OVER",
-            "description": (
-                "Hazard is likely to intersect traveler's path within\n"
-                "the projection window.  System recommends evasive action:\n"
-                "reroute, exit to shelter, or reduce speed and prepare."
-            ),
-            "guidance": "Take evasive action now.",
-        },
-        {
-            "name": "IMMEDIATE DANGER",
-            "threshold": "R >= 0.70",
-            "color": "#D32F2F",
-            "light": "#FFCDD2",
-            "icon_text": "!!",
-            "action": "EXIT NOW / SHELTER IN VEHICLE",
-            "description": (
-                "Life-threatening hazard is imminent or actively impacting\n"
-                "the traveler's position.  Immediate protective action\n"
-                "required.  Audio + haptic alerts activated."
-            ),
-            "guidance": "Immediate protective action required.",
-        },
+    # MEASURED section (green)
+    y = 5.8
+    draw_box(ax, 0.3, y, 4.2, 0.5, "MEASURED (Direct Observation)",
+             facecolor="#C8E6C9", edgecolor="#2E7D32", fontsize=10,
+             fontweight="bold", textcolor="#1B5E20")
+
+    measured = [
+        "ML Model Accuracy: Test-set precision/recall/F1",
+        "GraphQL Latency: 1000 HTTP requests measured",
+        "NWS Lead Times: Documented warning records",
+        "Payload Size: Byte counts from real responses",
     ]
+    y -= 0.15
+    for item in measured:
+        y -= 0.35
+        ax.text(0.5, y, f"\u2713  {item}", fontsize=8, color="#333")
 
-    y_start = 5.5
-    row_h = 1.7
-    left_margin = 0.6
+    # ESTIMATED section (orange)
+    y -= 0.4
+    draw_box(ax, 0.3, y, 4.2, 0.5, "ESTIMATED (Algorithm Simulation)",
+             facecolor="#FFE0B2", edgecolor="#E65100", fontsize=10,
+             fontweight="bold", textcolor="#E65100")
 
-    for i, tier in enumerate(tiers):
-        y = y_start - i * row_h
+    estimated = [
+        "WeatherWise Lead Times: Monte Carlo (n=1000)",
+        "Tier Accuracy: Simulated distance scenarios",
+        "Scalability: ThreadPoolExecutor concurrency test",
+    ]
+    y -= 0.15
+    for item in estimated:
+        y -= 0.35
+        ax.text(0.5, y, f"\u25CB  {item}", fontsize=8, color="#333")
 
-        # Background row
-        bg = FancyBboxPatch(
-            (left_margin, y - 0.65), 8.8, 1.3,
-            boxstyle="round,pad=0.04",
-            facecolor=tier["light"], edgecolor=tier["color"],
-            linewidth=1.2, zorder=0)
-        ax.add_patch(bg)
+    # RIGHT SIDE: Validation approach
+    draw_box(ax, 5.5, 5.8, 4.2, 0.5, "Validation Approach",
+             facecolor="#E3F2FD", edgecolor="#1565C0", fontsize=10,
+             fontweight="bold", textcolor="#0D47A1")
 
-        # Icon circle
-        circle = plt.Circle((1.3, y), 0.35, facecolor=tier["color"],
-                             edgecolor="white", linewidth=2, zorder=2)
-        ax.add_patch(circle)
-        ax.text(1.3, y, tier["icon_text"], ha="center", va="center",
-                fontsize=14, fontweight="bold", color="white", zorder=3)
+    validations = [
+        "5-Fold Stratified Cross-Validation",
+        "95% Confidence Intervals on all estimates",
+        "Conservative parameter assumptions",
+        "Methodology transparency disclosure",
+        "Ablation study (9 feature groups)",
+        "Comparison with 3 model architectures",
+    ]
+    vy = 5.65
+    for item in validations:
+        vy -= 0.35
+        ax.text(5.7, vy, f"\u2022  {item}", fontsize=8, color="#333")
 
-        # Tier name and threshold
-        ax.text(2.1, y + 0.35, tier["name"], ha="left", va="center",
-                fontsize=11, fontweight="bold", color=tier["color"])
-        ax.text(2.1, y + 0.05, f'Threshold: {tier["threshold"]}',
-                ha="left", va="center", fontsize=8, color="#666666",
-                fontstyle="italic")
+    # Bottom: key metrics box
+    draw_box(ax, 0.3, 0.3, 9.4, 1.6, "",
+             facecolor="#F5F5F5", edgecolor="#999")
 
-        # Recommended action
-        ax.text(2.1, y - 0.25, f'Action: {tier["action"]}',
-                ha="left", va="center", fontsize=8, fontweight="bold",
-                color="#333333")
+    ax.text(5.0, 1.7, "Key Paper Metrics",
+            ha="center", fontsize=11, fontweight="bold", color="#333")
 
-        # Description
-        ax.text(5.5, y + 0.1, tier["description"],
-                ha="left", va="center", fontsize=7.5, color="#424242",
-                linespacing=1.4)
+    metrics = [
+        ("ML Accuracy", "Weighted F1 from test set", 1.0),
+        ("Avg Lead Time Advantage", "+25 min (estimated)", 4.0),
+        ("Latency Reduction", "~63% (combined vs separate)", 7.5),
+    ]
+    for label, value, x in metrics:
+        ax.text(x, 1.15, label, fontsize=9, fontweight="bold", color="#0D47A1")
+        ax.text(x, 0.75, value, fontsize=9, color="#555")
 
-    # Gradient bar at bottom
-    gradient_y = 0.3
-    gradient = np.linspace(0, 1, 256).reshape(1, -1)
-    from matplotlib.colors import LinearSegmentedColormap
-    cmap = LinearSegmentedColormap.from_list(
-        "risk", ["#1976D2", "#F57C00", "#D32F2F"])
-    ax.imshow(gradient, aspect="auto", cmap=cmap,
-              extent=[1.0, 9.0, gradient_y - 0.12, gradient_y + 0.12],
-              zorder=1)
-
-    ax.text(1.0, gradient_y - 0.3, "0.0", ha="center", fontsize=8, color="#666666")
-    ax.text(3.4, gradient_y - 0.3, "0.30", ha="center", fontsize=8, color="#666666")
-    ax.text(6.6, gradient_y - 0.3, "0.70", ha="center", fontsize=8, color="#666666")
-    ax.text(9.0, gradient_y - 0.3, "1.0", ha="center", fontsize=8, color="#666666")
-
-    # Threshold markers
-    for xval in [3.4, 6.6]:
-        ax.plot([xval, xval], [gradient_y - 0.15, gradient_y + 0.15],
-                color="white", linewidth=2, zorder=2)
-
-    ax.text(5.0, gradient_y + 0.35, "Composite Risk Score (R)",
-            ha="center", va="center", fontsize=9, color="#333333")
-
-    fig.tight_layout()
-    path = os.path.join(FIG_DIR, "alert_tiers.png")
-    fig.savefig(path, dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "evaluation_methodology.png")
+    fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {path}")
 
 
-# ===========================================================================
-# FIGURE 4: Decision Tree / Flowchart
-# ===========================================================================
-
-def fig_decision_tree() -> None:
-    """Flowchart of decision logic: hazard detection -> alert -> action."""
-    fig, ax = plt.subplots(figsize=(11, 9))
-    ax.set_xlim(0, 11)
-    ax.set_ylim(0, 10)
-    ax.axis("off")
-
-    ax.text(5.5, 9.6, "WeatherWise Decision Logic Flowchart",
-            ha="center", va="center", fontsize=14, fontweight="bold")
-
-    # ---- Helper: draw a process box ----
-    def proc_box(cx, cy, w, h, text, color, fc=None, fs=8):
-        if fc is None:
-            fc = color
-        box = FancyBboxPatch(
-            (cx - w / 2, cy - h / 2), w, h,
-            boxstyle="round,pad=0.03",
-            facecolor=fc, edgecolor=color, linewidth=1.2, zorder=2)
-        ax.add_patch(box)
-        ax.text(cx, cy, text, ha="center", va="center",
-                fontsize=fs, fontweight="bold", color="white"
-                if fc == color else color, zorder=3, linespacing=1.3)
-
-    # ---- Helper: draw a diamond (decision) ----
-    def diamond(cx, cy, w, h, text, color):
-        verts = [
-            (cx, cy + h / 2),
-            (cx + w / 2, cy),
-            (cx, cy - h / 2),
-            (cx - w / 2, cy),
-            (cx, cy + h / 2),
-        ]
-        from matplotlib.patches import Polygon
-        poly = Polygon(verts, closed=True, facecolor="#FFFDE7",
-                       edgecolor=color, linewidth=1.2, zorder=2)
-        ax.add_patch(poly)
-        ax.text(cx, cy, text, ha="center", va="center",
-                fontsize=7.5, fontweight="bold", color=color, zorder=3,
-                linespacing=1.2)
-
-    # ---- Helper: arrow ----
-    def arrow(x1, y1, x2, y2, color="#666666", label="", label_side="right"):
-        _draw_arrow(ax, x1, y1, x2, y2, color=color)
-        if label:
-            mx = (x1 + x2) / 2
-            my = (y1 + y2) / 2
-            offset = 0.15 if label_side == "right" else -0.15
-            ax.text(mx + offset, my, label, ha="left" if label_side == "right" else "right",
-                    va="center", fontsize=7, color=color, fontstyle="italic")
-
-    # ============ FLOW ============
-
-    # Step 1: Data ingestion
-    proc_box(5.5, 9.0, 3.2, 0.6, "Ingest Real-Time Weather Data\n(NWS, Radar, AirNow, USGS)",
-             BLUE, fs=8)
-
-    arrow(5.5, 8.7, 5.5, 8.2, color=BLUE)
-
-    # Step 2: Hazard detection
-    diamond(5.5, 7.7, 3.0, 0.9, "Active hazard\ndetected?", BLUE)
-
-    # No branch
-    arrow(7.0, 7.7, 9.5, 7.7, color=GREY, label="No")
-    proc_box(9.5, 7.7, 1.6, 0.5, "Continue\nMonitoring",
-             GREY, fc=GREY_LT, fs=7)
-
-    # Yes branch
-    arrow(5.5, 7.25, 5.5, 6.65, color=BLUE, label="Yes", label_side="right")
-
-    # Step 3: Compute risk
-    proc_box(5.5, 6.3, 3.5, 0.6, "Compute 5-Component Risk Score\n"
-             "R = w1*PROX + w2*INTER + w3*SEV + w4*EXP + w5*ESC",
-             GREEN, fs=7)
-
-    arrow(5.5, 6.0, 5.5, 5.4, color=GREEN)
-
-    # Step 4: Tier decision
-    diamond(5.5, 4.95, 2.6, 0.8, "R >= 0.70?", "#D32F2F")
-
-    # Yes -> IMMEDIATE DANGER
-    arrow(6.8, 4.95, 9.2, 4.95, color="#D32F2F", label="Yes")
-    proc_box(9.5, 4.95, 1.8, 0.55, "IMMEDIATE\nDANGER", "#D32F2F", fs=8)
-
-    # No
-    arrow(5.5, 4.55, 5.5, 3.95, color="#F57C00", label="No", label_side="right")
-
-    # Step 5: Action tier decision
-    diamond(5.5, 3.5, 2.6, 0.8, "R >= 0.30?", "#F57C00")
-
-    # Yes -> ACTION REQUIRED
-    arrow(6.8, 3.5, 9.2, 3.5, color="#F57C00", label="Yes")
-    proc_box(9.5, 3.5, 1.8, 0.55, "ACTION\nREQUIRED", "#F57C00", fs=8)
-
-    # No -> ADVISORY
-    arrow(5.5, 3.1, 5.5, 2.45, color="#1976D2", label="No", label_side="right")
-    proc_box(5.5, 2.15, 1.8, 0.55, "ADVISORY", "#1976D2", fs=8)
-
-    # ---- Action sub-decisions (from IMMEDIATE DANGER) ----
-    arrow(9.5, 4.40, 9.5, 3.95, color="#D32F2F")
-    diamond(9.5, 3.5, 2.0, 0.7, "Exit within\n2 mi?", "#D32F2F")
-    # Yes
-    proc_box(9.5, 2.45, 1.6, 0.5, "EXIT TO\nSHELTER", "#D32F2F", fc=RED_LT, fs=7)
-    arrow(9.5, 3.15, 9.5, 2.70, color="#D32F2F", label="Yes", label_side="right")
-    # No
-    proc_box(7.8, 2.45, 1.8, 0.5, "SHELTER IN\nVEHICLE", "#D32F2F", fc=RED_LT, fs=7)
-    arrow(8.5, 3.5, 7.9, 2.90, color="#D32F2F", label="No", label_side="left")
-
-    # ---- Action sub-decisions (from ACTION REQUIRED) ----
-    # Connect from the R>=0.30 "Yes" branch to a sub-decision at x=2.0
-    arrow(4.2, 3.5, 2.5, 2.8, color="#F57C00", label="", label_side="left")
-    diamond(2.0, 2.35, 2.2, 0.7, "Safe route\nclear?", "#F57C00")
-
-    # Yes -> REROUTE
-    proc_box(2.0, 1.30, 1.4, 0.5, "REROUTE", "#F57C00", fc=ORANGE_LT, fs=7)
-    arrow(2.0, 2.00, 2.0, 1.55, color="#F57C00", label="Yes", label_side="right")
-
-    # No -> check nearby shelter
-    proc_box(0.8, 1.30, 1.4, 0.5, "EXIT TO\nSHELTER", "#F57C00", fc=ORANGE_LT, fs=7)
-    arrow(0.9, 2.35, 0.8, 1.55, color="#F57C00", label="No", label_side="left")
-
-    proc_box(3.2, 1.30, 1.4, 0.5, "PULL\nOVER", "#F57C00", fc=ORANGE_LT, fs=7)
-    arrow(3.1, 2.35, 3.2, 1.55, color="#F57C00", label="No exits", label_side="right")
-
-    # ---- Feedback loop ----
-    # From ADVISORY back down to device push
-    arrow(5.5, 1.88, 5.5, 1.15, color="#1976D2")
-    proc_box(5.5, 0.75, 2.8, 0.55,
-             "Push to Traveler Device\n(Visual + Audio + Haptic)", GREY, fs=7)
-
-    # Re-evaluation label
-    ax.annotate("", xy=(0.5, 9.0), xytext=(0.5, 0.75),
-                arrowprops=dict(arrowstyle="->", color="#BDBDBD",
-                                linewidth=1.0, linestyle="dashed",
-                                connectionstyle="arc3,rad=0.0"),
-                zorder=0)
-    ax.text(0.25, 5.0, "Re-evaluate\nevery 30s", ha="center", va="center",
-            fontsize=7, color="#999999", rotation=90, fontstyle="italic")
-
-    fig.tight_layout()
-    path = os.path.join(FIG_DIR, "decision_tree.png")
-    fig.savefig(path, dpi=DPI, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    print(f"  Saved: {path}")
-
-
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Main
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
-def main() -> None:
+def main():
     print("\n" + "=" * 72)
-    print("  WeatherWise -- Paper Figure Generation")
-    print("  IEEE Access Paper, Sections III-IV")
+    print("  WeatherWise -- Paper Design Figures Generator")
+    print("  IEEE Access Paper: 7 Design Figures at 300 DPI")
     print("=" * 72)
 
-    print("\n  Generating system architecture diagram ...")
-    fig_system_architecture()
+    generators = [
+        ("1/7", "System Architecture", fig_system_architecture),
+        ("2/7", "Risk Score Formula", fig_risk_score_formula),
+        ("3/7", "Alert Tiers", fig_alert_tiers),
+        ("4/7", "Decision Tree", fig_decision_tree),
+        ("5/7", "ML Pipeline", fig_ml_pipeline),
+        ("6/7", "London KY Timeline", fig_london_ky_timeline),
+        ("7/7", "Evaluation Methodology", fig_evaluation_methodology),
+    ]
 
-    print("  Generating risk score formula visualization ...")
-    fig_risk_score_formula()
+    for step, name, func in generators:
+        print(f"\n  [{step}] {name}")
+        func()
 
-    print("  Generating alert tiers visualization ...")
-    fig_alert_tiers()
-
-    print("  Generating decision tree flowchart ...")
-    fig_decision_tree()
-
-    print(f"\n  All figures saved to: {FIG_DIR}")
+    print(f"\n  All 7 figures saved to: {FIG_DIR}")
     print("  Figure generation complete.\n")
 
 

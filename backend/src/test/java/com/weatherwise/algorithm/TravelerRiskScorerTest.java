@@ -104,20 +104,42 @@ class TravelerRiskScorerTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("stormFarAway: storm 45 mi away moving away → ADVISORY, score < 25")
+    @DisplayName("stormFarAway: storm 55+ mi away moving away → MONITORING, score < 25")
     void stormFarAway() {
-        // Storm is 45+ miles NE of traveler, moving further NE (away)
+        // Storm is 55+ miles NE of traveler, moving further NE (away)
         TravelerPosition t = traveler(38.25, -85.76, 270, 70);
         StormCell storm = buildStormCell("far-001",
-                38.80, -85.10,   // ~45 miles NE
-                20, 20,          // Moving NE (away from traveler heading west)
+                39.00, -84.90,   // ~55 miles NE
+                25, 25,          // Moving NE (away from traveler heading west)
                 30, 5.0,
                 HazardType.SEVERE_THUNDERSTORM);
 
-        RiskAssessment result = scorer.computeRisk(t, List.of(storm),
-                standardSafeLocations, false);
+        // Safe locations near the traveler so escape options score is low
+        List<SafeLocation> nearbySafe = List.of(
+                SafeLocation.builder()
+                        .name("Gas Station I-64 West")
+                        .locationType(LocationType.GAS_STATION)
+                        .lat(38.25).lon(-85.73)
+                        .distanceMiles(1.8).hasIndoorShelter(true).exitNumber("15")
+                        .build(),
+                SafeLocation.builder()
+                        .name("Truck Stop I-64 West")
+                        .locationType(LocationType.TRUCK_STOP)
+                        .lat(38.26).lon(-85.70)
+                        .distanceMiles(3.5).hasIndoorShelter(true).exitNumber("17")
+                        .build(),
+                SafeLocation.builder()
+                        .name("Rest Area I-64")
+                        .locationType(LocationType.REST_AREA)
+                        .lat(38.24).lon(-85.71)
+                        .distanceMiles(2.9).hasIndoorShelter(true).exitNumber("16")
+                        .build()
+        );
 
-        assertEquals(AlertTier.ADVISORY, result.getTier());
+        RiskAssessment result = scorer.computeRisk(t, List.of(storm),
+                nearbySafe, false);
+
+        assertEquals(AlertTier.MONITORING, result.getTier());
         assertTrue(result.getOverallScore() < 25.0,
                 "Score should be < 25 for distant storm, was: " + result.getOverallScore());
         assertEquals(ActionType.CONTINUE_MONITORING, result.getRecommendedAction());
