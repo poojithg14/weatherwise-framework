@@ -1,0 +1,38 @@
+{
+  "simulated": false,
+  "combined_query": {
+    "iterations": 1000,
+    "errors": 0,
+    "mean_ms": 1.97,
+    "median_ms": 1.62,
+    "p95_ms": 2.99,
+    "p99_ms": 6.88,
+    "stdev_ms": 1.7,
+    "avg_payload_kb": 0.88
+  },
+  "separate_queries": {
+    "iterations": 1000,
+    "errors": 0,
+    "mean_ms": 7.28,
+    "median_ms": 6.29,
+    "p95_ms": 11.84,
+    "p99_ms": 29.21,
+    "stdev_ms": 4.04,
+    "avg_payload_kb": 1.48
+  },
+  "latency_reduction_pct": 72.9,
+  "concurrency": {
+    "10": {
+      "combined_mean_ms": 9.01,
+      "separate_mean_ms": 42.45
+    },
+    "50": {
+      "combined_mean_ms": 22.73,
+      "separate_mean_ms": 195.19
+    },
+    "100": {
+      "combined_mean_ms": 23.72,
+      "separate_mean_ms": 236.72
+    }
+  }
+}

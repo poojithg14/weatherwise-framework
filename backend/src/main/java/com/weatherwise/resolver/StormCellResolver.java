@@ -40,7 +40,7 @@ public class StormCellResolver {
         return entities.stream().map(this::toModel).toList();
     }
 
-    StormCell toModel(StormCellEntity entity) {
+    public StormCell toModel(StormCellEntity entity) {
         return StormCell.builder()
                 .id(entity.getStormId())
                 .lat(entity.getLocation().getY())

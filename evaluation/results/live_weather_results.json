@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-02-24 18:21 UTC",
+  "data_source": "live_nws",
+  "backend_running": true,
+  "states_queried": [
+    "KY",
+    "TN",
+    "NC",
+    "TX",
+    "OK"
+  ],
+  "total_alerts": 11,
+  "alert_types": {
+    "Red Flag Warning": 6,
+    "Rip Current Statement": 1,
+    "Special Weather Statement": 1,
+    "Wind Advisory": 3
+  },
+  "target_alert": {
+    "event_type": "Red Flag Warning",
+    "severity": "Severe",
+    "area": "Parmer; Castro; Swisher; Briscoe; Bailey; Lamb; Hale; Floyd; Motley; Cochran; Hockley; Lubbock; Crosby; Dickens; Yoakum; Terry; Lynn",
+    "severity_coefficient": 0.6
+  },
+  "simulation": {
+    "points": 0,
+    "peak_risk": 0,
+    "min_distance_mi": 0,
+    "risk_timeline": []
+  }
+}

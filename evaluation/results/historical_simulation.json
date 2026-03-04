@@ -1,0 +1,177 @@
+{
+  "methodology": "Monte Carlo simulation of risk scoring algorithm",
+  "disclaimer": "WeatherWise lead times are estimated via Monte Carlo simulation, not measured from a deployed system. NWS/WEA times are from documented public warning records.",
+  "n_simulations": 1000,
+  "events": [
+    {
+      "name": "London KY EF-4 Tornado",
+      "date": "2025-05-16",
+      "hazard_type": "TORNADO",
+      "ww_lead_time_mean": 36.9,
+      "ww_lead_time_std": 4.9,
+      "ww_lead_time_ci_95": [
+        27.0,
+        46.4
+      ],
+      "nws_lead_time_min": 12.0,
+      "advantage_min": 24.9,
+      "confidence_level": "medium",
+      "nws_source": "NWS Jackson KY WFO Tornado Warning SVR-2025-0516",
+      "tier_accuracy": {
+        "MONITORING": {
+          "precision": 0,
+          "recall": 0.0
+        },
+        "ADVISORY": {
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "ACTION_REQUIRED": {
+          "precision": 0.302,
+          "recall": 1.0
+        },
+        "IMMEDIATE_DANGER": {
+          "precision": 1.0,
+          "recall": 0.536
+        }
+      }
+    },
+    {
+      "name": "Hurricane Helene (Western NC)",
+      "date": "2024-09-27",
+      "hazard_type": "HURRICANE",
+      "ww_lead_time_mean": 44.3,
+      "ww_lead_time_std": 8.1,
+      "ww_lead_time_ci_95": [
+        28.1,
+        60.2
+      ],
+      "nws_lead_time_min": 30.0,
+      "advantage_min": 14.3,
+      "confidence_level": "high",
+      "nws_source": "NWS Greenville-Spartanburg Hurricane Warning",
+      "tier_accuracy": {
+        "MONITORING": {
+          "precision": 0,
+          "recall": 0.0
+        },
+        "ADVISORY": {
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "ACTION_REQUIRED": {
+          "precision": 0.217,
+          "recall": 1.0
+        },
+        "IMMEDIATE_DANGER": {
+          "precision": 1.0,
+          "recall": 0.696
+        }
+      }
+    },
+    {
+      "name": "TX Flash Flood (San Marcos)",
+      "date": "2024-05-03",
+      "hazard_type": "FLASH_FLOOD",
+      "ww_lead_time_mean": 35.2,
+      "ww_lead_time_std": 7.1,
+      "ww_lead_time_ci_95": [
+        21.3,
+        49.2
+      ],
+      "nws_lead_time_min": 15.0,
+      "advantage_min": 20.2,
+      "confidence_level": "medium",
+      "nws_source": "NWS Austin/San Antonio Flash Flood Warning",
+      "tier_accuracy": {
+        "MONITORING": {
+          "precision": 0,
+          "recall": 0.0
+        },
+        "ADVISORY": {
+          "precision": 0.008,
+          "recall": 0.014
+        },
+        "ACTION_REQUIRED": {
+          "precision": 0.264,
+          "recall": 1.0
+        },
+        "IMMEDIATE_DANGER": {
+          "precision": 1.0,
+          "recall": 0.156
+        }
+      }
+    },
+    {
+      "name": "Winter Storm Elliott (Buffalo)",
+      "date": "2022-12-23",
+      "hazard_type": "WINTER_STORM",
+      "ww_lead_time_mean": 60.0,
+      "ww_lead_time_std": 9.8,
+      "ww_lead_time_ci_95": [
+        41.5,
+        79.7
+      ],
+      "nws_lead_time_min": 30.0,
+      "advantage_min": 30.0,
+      "confidence_level": "high",
+      "nws_source": "NWS Buffalo Winter Storm Warning",
+      "tier_accuracy": {
+        "MONITORING": {
+          "precision": 1.0,
+          "recall": 0.055
+        },
+        "ADVISORY": {
+          "precision": 0.17,
+          "recall": 0.306
+        },
+        "ACTION_REQUIRED": {
+          "precision": 0.288,
+          "recall": 1.0
+        },
+        "IMMEDIATE_DANGER": {
+          "precision": 0,
+          "recall": 0.0
+        }
+      }
+    },
+    {
+      "name": "OR Wildfire Smoke (Salem)",
+      "date": "2020-09-09",
+      "hazard_type": "WILDFIRE_SMOKE",
+      "ww_lead_time_mean": 39.8,
+      "ww_lead_time_std": 10.0,
+      "ww_lead_time_ci_95": [
+        19.6,
+        59.5
+      ],
+      "nws_lead_time_min": 5.0,
+      "advantage_min": 34.8,
+      "confidence_level": "low",
+      "nws_source": "No equivalent WEA for smoke; ~5 min effective from Air Quality Alert",
+      "tier_accuracy": {
+        "MONITORING": {
+          "precision": 1.0,
+          "recall": 0.012
+        },
+        "ADVISORY": {
+          "precision": 0.06,
+          "recall": 0.112
+        },
+        "ACTION_REQUIRED": {
+          "precision": 0.286,
+          "recall": 1.0
+        },
+        "IMMEDIATE_DANGER": {
+          "precision": 0,
+          "recall": 0.0
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "avg_ww_lead_time": 43.2,
+    "avg_nws_lead_time": 18.4,
+    "avg_advantage": 24.8
+  }
+}

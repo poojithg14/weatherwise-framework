@@ -8,6 +8,7 @@ enum HazardType {
 }
 
 enum AlertTier {
+    MONITORING
     ADVISORY
     ACTION_REQUIRED
     IMMEDIATE_DANGER
@@ -31,6 +32,11 @@ enum LocationType {
 }
 
 type Coordinate {
+    lat: Float!
+    lon: Float!
+}
+
+type Waypoint {
     lat: Float!
     lon: Float!
 }
@@ -64,7 +70,7 @@ type RiskAssessment {
     overallScore: Float!
     tier: AlertTier!
     timeToIntersectionMinutes: Float
-    recommendedAction: ActionType!
+    recommendedAction: String!
     hazardType: HazardType
     alertMessage: String!
     hazardSpecificGuidance: String
@@ -96,12 +102,41 @@ type AlternateRoute {
     safetyScore: Float!
 }
 
+type Route {
+    waypoints: [Waypoint!]!
+    distanceMiles: Float!
+    timeMinutes: Float!
+    safetyScore: Float
+}
+
+type TripSession {
+    sessionId: ID!
+    route: [Waypoint!]!
+    alternateRoutes: [Route!]
+    estimatedDistanceMiles: Float!
+    estimatedTimeMinutes: Float!
+}
+
+type TripSummary {
+    totalDistanceMiles: Float!
+    totalTimeMinutes: Float!
+    maxRiskScore: Float!
+    alertsReceived: Int!
+    actionsRecommended: [String!]
+}
+
 type Query {
     travelerSafety(lat: Float!, lon: Float!, heading: Float!, speedMph: Float!): RiskAssessment!
     activeAlerts(lat: Float!, lon: Float!, radiusMiles: Float!): [WeatherAlert!]!
     safeLocations(lat: Float!, lon: Float!, radiusMiles: Float!): [SafeLocation!]!
     alternateRoutes(fromLat: Float!, fromLon: Float!, toLat: Float!, toLon: Float!, avoidHazards: Boolean!): [AlternateRoute!]!
     stormCells(lat: Float!, lon: Float!, radiusMiles: Float!): [StormCell!]!
+}
+
+type Mutation {
+    startTrip(fromLat: Float!, fromLon: Float!, toLat: Float!, toLon: Float!): TripSession!
+    updatePosition(sessionId: ID!, lat: Float!, lon: Float!, heading: Float!, speedMph: Float!): RiskAssessment!
+    endTrip(sessionId: ID!): TripSummary!
 }
 
 type Subscription {

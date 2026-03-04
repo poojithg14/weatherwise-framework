@@ -57,8 +57,8 @@ class EndToEndTest {
         // Verify tier is a valid enum value
         String tier = (String) result.get("tier");
         assertNotNull(tier, "tier should not be null");
-        assertTrue(tier.equals("ADVISORY") || tier.equals("ACTION_REQUIRED")
-                        || tier.equals("IMMEDIATE_DANGER"),
+        assertTrue(tier.equals("MONITORING") || tier.equals("ADVISORY")
+                        || tier.equals("ACTION_REQUIRED") || tier.equals("IMMEDIATE_DANGER"),
                 "Tier should be a valid AlertTier, was: " + tier);
 
         // Verify alert message is non-empty
