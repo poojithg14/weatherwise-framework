@@ -7,12 +7,14 @@ import com.weatherwise.entity.RiskAssessmentLogEntity;
 import com.weatherwise.entity.SafeLocationEntity;
 import com.weatherwise.entity.StormCellEntity;
 import com.weatherwise.entity.TravelerSessionEntity;
+import com.weatherwise.entity.WeatherAlertEntity;
 import com.weatherwise.model.*;
 import com.weatherwise.repository.RiskAssessmentLogRepository;
 import com.weatherwise.repository.SafeLocationRepository;
 import com.weatherwise.repository.StormCellRepository;
 import com.weatherwise.resolver.StormCellResolver;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -24,7 +26,9 @@ import java.util.List;
 public class RiskScoringService {
 
     private static final double MILES_TO_METERS = 1609.344;
-    private static final double DEFAULT_RADIUS_MILES = 50.0;
+
+    @Value("${weatherwise.risk.storm-radius-miles:50.0}")
+    private double stormRadiusMiles;
 
     private final TravelerRiskScorer riskScorer;
     private final SafeRouteOptimizer routeOptimizer;
@@ -61,7 +65,7 @@ public class RiskScoringService {
                 .timestamp(Instant.now().toString())
                 .build();
 
-        double radiusMeters = DEFAULT_RADIUS_MILES * MILES_TO_METERS;
+        double radiusMeters = stormRadiusMiles * MILES_TO_METERS;
 
         // Get storms from DB
         List<StormCellEntity> stormEntities = stormCellRepository.findActiveStormsWithinRadius(
@@ -75,9 +79,27 @@ public class RiskScoringService {
         List<SafeLocation> safeLocations = safeEntities.stream()
                 .map(e -> toSafeLocationModel(e, lat, lon)).toList();
 
-        // Fetch NWS alerts (real-time)
+        // Fetch live NWS alerts and merge into storms list
         try {
-            nwsAlertService.getActiveAlerts(lat, lon, DEFAULT_RADIUS_MILES);
+            List<WeatherAlertEntity> liveAlerts = nwsAlertService.getActiveAlerts(lat, lon, stormRadiusMiles);
+            for (WeatherAlertEntity alert : liveAlerts) {
+                String stormId = "nws-" + alert.getAlertId();
+                boolean alreadyPresent = storms.stream().anyMatch(s -> stormId.equals(s.getId()));
+                if (!alreadyPresent && alert.getPolygon() != null) {
+                    org.locationtech.jts.geom.Point centroid = alert.getPolygon().getCentroid();
+                    storms = new java.util.ArrayList<>(storms);
+                    storms.add(StormCell.builder()
+                            .id(stormId)
+                            .lat(centroid.getY())
+                            .lon(centroid.getX())
+                            .velocityX(10.0)
+                            .velocityY(10.0)
+                            .vil(40.0)
+                            .rotation(0.0)
+                            .hazardType(alert.getHazardType())
+                            .build());
+                }
+            }
         } catch (Exception e) {
             log.debug("NWS fetch skipped: {}", e.getMessage());
         }

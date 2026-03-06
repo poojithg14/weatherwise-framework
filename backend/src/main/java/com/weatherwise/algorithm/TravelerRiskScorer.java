@@ -1,6 +1,7 @@
 package com.weatherwise.algorithm;
 
 import com.weatherwise.model.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -60,23 +61,30 @@ import java.util.List;
  *   <li>R ≥ 0.75 → IMMEDIATE_DANGER</li>
  * </ul>
  *
- * <p><b>For Evaluation Suite Section IV-B (Methodology).</b></p>
- *
  * @author WeatherWise Research Team
  * @see GeometricIntersection
  */
 @Component
 public class TravelerRiskScorer {
 
-    // Sub-score weights (must sum to 1.0)
-    private static final double W_PROXIMITY    = 0.25;
-    private static final double W_INTERSECTION = 0.30;
-    private static final double W_SEVERITY     = 0.20;
-    private static final double W_EXPOSURE     = 0.15;
-    private static final double W_ESCAPE       = 0.10;
+    // Sub-score weights (configurable via application.yml)
+    @Value("${weatherwise.risk.proximity-weight:0.25}")
+    private double wProximity;
 
-    // Nighttime escalation multiplier
-    private static final double NIGHTTIME_FACTOR = 1.15;
+    @Value("${weatherwise.risk.intersection-weight:0.30}")
+    private double wIntersection;
+
+    @Value("${weatherwise.risk.severity-weight:0.20}")
+    private double wSeverity;
+
+    @Value("${weatherwise.risk.exposure-weight:0.15}")
+    private double wExposure;
+
+    @Value("${weatherwise.risk.escape-weight:0.10}")
+    private double wEscape;
+
+    @Value("${weatherwise.risk.nighttime-factor:1.15}")
+    private double nighttimeFactor;
 
     // Forward-projection horizon (minutes) and step size
     private static final int PROJECTION_HORIZON_MIN = 60;
@@ -123,15 +131,15 @@ public class TravelerRiskScorer {
 
             // Apply nighttime escalation
             if (isNighttime) {
-                intersection = Math.min(1.0, intersection * NIGHTTIME_FACTOR);
-                severity     = Math.min(1.0, severity * NIGHTTIME_FACTOR);
+                intersection = Math.min(1.0, intersection * nighttimeFactor);
+                severity     = Math.min(1.0, severity * nighttimeFactor);
             }
 
-            double composite = W_PROXIMITY * proximity
-                             + W_INTERSECTION * intersection
-                             + W_SEVERITY * severity
-                             + W_EXPOSURE * exposure
-                             + W_ESCAPE * escape;
+            double composite = wProximity * proximity
+                             + wIntersection * intersection
+                             + wSeverity * severity
+                             + wExposure * exposure
+                             + wEscape * escape;
 
             if (composite > worstScore) {
                 worstScore        = composite;

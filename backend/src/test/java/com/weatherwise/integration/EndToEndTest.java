@@ -15,8 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * End-to-end integration tests that start the full Spring Boot application
  * and execute GraphQL queries against the real algorithm pipeline.
  *
- * Coordinates are centered on the I-75 corridor near London, KY where the
- * seeded May 16, 2025 EF-4 tornado scenario takes place.
+ * Coordinates are centered on the I-75 corridor near London, KY where
+ * infrastructure data (safe locations, road segments) is seeded.
+ * Storm/alert data comes from live NWS API, so those queries may return
+ * empty results when no active weather events exist.
  */
 @SpringBootTest
 class EndToEndTest {
@@ -72,8 +74,8 @@ class EndToEndTest {
     }
 
     @Test
-    @DisplayName("activeAlerts query returns at least 1 alert")
-    void activeAlertsReturnsAlerts() {
+    @DisplayName("activeAlerts query returns valid response (may be empty if no live alerts)")
+    void activeAlertsReturnsValidResponse() {
         String query = """
                 {
                     activeAlerts(lat: %s, lon: %s, radiusMiles: 50) {
@@ -89,14 +91,15 @@ class EndToEndTest {
         List<Map<String, Object>> alerts = dgsQueryExecutor.executeAndExtractJsonPathAsObject(
                 query, "data.activeAlerts", List.class);
 
-        assertNotNull(alerts);
-        assertFalse(alerts.isEmpty(), "Should return at least 1 weather alert");
+        assertNotNull(alerts, "activeAlerts should return a list (possibly empty)");
 
-        // Verify first alert has required fields
-        Map<String, Object> first = alerts.get(0);
-        assertNotNull(first.get("id"));
-        assertNotNull(first.get("type"));
-        assertNotNull(first.get("severity"));
+        // If live alerts exist, verify they have required fields
+        if (!alerts.isEmpty()) {
+            Map<String, Object> first = alerts.get(0);
+            assertNotNull(first.get("id"));
+            assertNotNull(first.get("type"));
+            assertNotNull(first.get("severity"));
+        }
     }
 
     @Test
@@ -132,8 +135,8 @@ class EndToEndTest {
     }
 
     @Test
-    @DisplayName("stormCells query returns storm data")
-    void stormCellsReturnsData() {
+    @DisplayName("stormCells query returns valid response (may be empty if no active storms)")
+    void stormCellsReturnsValidResponse() {
         String query = """
                 {
                     stormCells(lat: %s, lon: %s, radiusMiles: 50) {
@@ -150,8 +153,14 @@ class EndToEndTest {
         List<Map<String, Object>> storms = dgsQueryExecutor.executeAndExtractJsonPathAsObject(
                 query, "data.stormCells", List.class);
 
-        assertNotNull(storms);
-        assertFalse(storms.isEmpty(), "Should return at least 1 storm cell");
+        assertNotNull(storms, "stormCells should return a list (possibly empty)");
+
+        // If live storms exist, verify they have required fields
+        if (!storms.isEmpty()) {
+            Map<String, Object> first = storms.get(0);
+            assertNotNull(first.get("id"));
+            assertNotNull(first.get("hazardType"));
+        }
     }
 
     @Test

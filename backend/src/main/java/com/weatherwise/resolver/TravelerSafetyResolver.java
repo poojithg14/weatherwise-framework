@@ -13,6 +13,7 @@ import com.weatherwise.model.StormCell;
 import com.weatherwise.model.TravelerPosition;
 import com.weatherwise.repository.SafeLocationRepository;
 import com.weatherwise.repository.StormCellRepository;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,7 +22,9 @@ import java.util.List;
 public class TravelerSafetyResolver {
 
     private static final double MILES_TO_METERS = 1609.344;
-    private static final double DEFAULT_RADIUS_MILES = 50.0;
+
+    @Value("${weatherwise.risk.storm-radius-miles:50.0}")
+    private double stormRadiusMiles;
 
     private final TravelerRiskScorer riskScorer;
     private final StormCellRepository stormCellRepository;
@@ -51,7 +54,7 @@ public class TravelerSafetyResolver {
                 .timestamp(Instant.now().toString())
                 .build();
 
-        double radiusMeters = DEFAULT_RADIUS_MILES * MILES_TO_METERS;
+        double radiusMeters = stormRadiusMiles * MILES_TO_METERS;
 
         List<StormCellEntity> stormEntities = stormCellRepository.findActiveStormsWithinRadius(
                 lat, lon, radiusMeters);

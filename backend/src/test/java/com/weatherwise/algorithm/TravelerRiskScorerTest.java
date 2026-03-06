@@ -4,6 +4,7 @@ import com.weatherwise.model.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -28,6 +29,12 @@ class TravelerRiskScorerTest {
     @BeforeEach
     void setUp() {
         scorer = new TravelerRiskScorer();
+        ReflectionTestUtils.setField(scorer, "wProximity", 0.25);
+        ReflectionTestUtils.setField(scorer, "wIntersection", 0.30);
+        ReflectionTestUtils.setField(scorer, "wSeverity", 0.20);
+        ReflectionTestUtils.setField(scorer, "wExposure", 0.15);
+        ReflectionTestUtils.setField(scorer, "wEscape", 0.10);
+        ReflectionTestUtils.setField(scorer, "nighttimeFactor", 1.15);
 
         // Standard safe locations along I-64
         standardSafeLocations = List.of(

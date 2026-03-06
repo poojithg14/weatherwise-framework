@@ -13,6 +13,7 @@ Runs on: http://localhost:5000
 """
 
 import os
+import logging
 import traceback
 import numpy as np
 import joblib
@@ -21,10 +22,23 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 # ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:8080"])
+cors_origins = os.environ.get(
+    "CORS_ORIGINS", "http://localhost:8080,http://localhost:5173,http://localhost:3000"
+).split(",")
+CORS(app, origins=cors_origins)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -354,20 +368,13 @@ def predict_route():
 # Startup
 # ---------------------------------------------------------------------------
 
+load_model()
+
 if __name__ == "__main__":
-    print("=" * 70)
-    print("  WeatherWise - ML Prediction Service")
-    print("=" * 70)
-
-    print("\n  Loading model artifacts ...")
-    load_model()
-
-    if not model_loaded:
-        print("  Service will start but predictions return 503.")
-
-    print(f"\n  http://localhost:5000")
-    print(f"  CORS: http://localhost:8080")
-    print(f"  GET  /health | POST /predict | POST /predict_route")
-    print("=" * 70)
-
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("ML_PORT", 5000))
+    logger.info("WeatherWise ML Prediction Service")
+    logger.info("CORS origins: %s", cors_origins)
+    logger.info("Model loaded: %s", model_loaded)
+    logger.info("Endpoints: GET /health | POST /predict | POST /predict_route")
+    logger.info("Starting on http://0.0.0.0:%d", port)
+    app.run(host="0.0.0.0", port=port, debug=False)

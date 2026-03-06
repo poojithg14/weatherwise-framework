@@ -2,7 +2,7 @@
 # =============================================================================
 # WeatherWise Framework — Complete Test & Evaluation Runner
 # =============================================================================
-# Runs all backend tests, ML training, and evaluation scripts.
+# Runs all backend tests, frontend tests, ML training, and evaluation scripts.
 # Usage: bash run_all_tests.sh
 # =============================================================================
 
@@ -53,9 +53,22 @@ if [ -n "$MVN" ]; then
 fi
 
 # =============================================================================
-# 2. ML Model Training (Python)
+# 2. Frontend Tests (Vitest + React Testing Library)
 # =============================================================================
-print_header "STEP 2: ML Model Training"
+print_header "STEP 2: Frontend Tests"
+
+if command -v npm &> /dev/null && [ -f "$ROOT_DIR/frontend/package.json" ]; then
+    run_step "Install frontend dependencies" npm --prefix "$ROOT_DIR/frontend" install --silent
+    run_step "Frontend unit tests" npm --prefix "$ROOT_DIR/frontend" test
+    run_step "Frontend production build" npm --prefix "$ROOT_DIR/frontend" run build
+else
+    echo "[WARN] npm not found or frontend/package.json missing. Skipping frontend tests."
+fi
+
+# =============================================================================
+# 3. ML Model Training (Python)
+# =============================================================================
+print_header "STEP 3: ML Model Training"
 
 if command -v python &> /dev/null; then
     PYTHON="python"
@@ -78,16 +91,16 @@ if [ -n "$PYTHON" ]; then
 fi
 
 # =============================================================================
-# 3. Evaluation Scripts
+# 4. Evaluation Scripts
 # =============================================================================
-print_header "STEP 3: Evaluation & Figure Generation"
+print_header "STEP 4: Evaluation & Figure Generation"
 
 if [ -n "$PYTHON" ]; then
     if [ -f "$ROOT_DIR/evaluation/historical_simulation.py" ]; then
         run_step "Historical simulation" $PYTHON "$ROOT_DIR/evaluation/historical_simulation.py"
     fi
-    if [ -f "$ROOT_DIR/evaluation/graphql_benchmark.py" ]; then
-        run_step "GraphQL benchmark" $PYTHON "$ROOT_DIR/evaluation/graphql_benchmark.py"
+    if [ -f "$ROOT_DIR/evaluation/real_benchmark.py" ]; then
+        run_step "Real benchmark" $PYTHON "$ROOT_DIR/evaluation/real_benchmark.py"
     fi
     if [ -f "$ROOT_DIR/evaluation/generate_paper_figures.py" ]; then
         run_step "Generate paper figures" $PYTHON "$ROOT_DIR/evaluation/generate_paper_figures.py"

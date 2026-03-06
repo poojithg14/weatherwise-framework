@@ -21,10 +21,6 @@ export const UPDATE_POSITION = gql`
       hazardSpecificGuidance
       timeToIntersectionMinutes
       hazardType
-      hazards { type severity distanceMiles direction etaMinutes }
-      nearestShelters { name type distanceMiles hasIndoorShelter exitNumber }
-      alternateRoute { waypoints { lat lon } distanceMiles timeMinutes safetyScore }
-      countdown { minutesUntilIntersection message }
     }
   }
 `;
@@ -62,6 +58,20 @@ export const GET_SAFE_LOCATIONS = gql`
   query SafeLocations($lat: Float!, $lon: Float!, $radiusMiles: Float!) {
     safeLocations(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
       name locationType lat lon distanceMiles hasIndoorShelter exitNumber
+    }
+  }
+`;
+
+export const RISK_UPDATES_SUBSCRIPTION = gql`
+  subscription RiskUpdates($lat: Float!, $lon: Float!, $heading: Float!, $speedMph: Float!) {
+    riskUpdates(lat: $lat, lon: $lon, heading: $heading, speedMph: $speedMph) {
+      overallScore
+      tier
+      alertMessage
+      recommendedAction
+      hazardSpecificGuidance
+      timeToIntersectionMinutes
+      hazardType
     }
   }
 `;

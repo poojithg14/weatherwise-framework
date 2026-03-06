@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const tierStyles = {
   MONITORING: {
@@ -60,6 +60,12 @@ function getActionConfig(action) {
       return { label: 'Reduce Speed', color: 'bg-yellow-600 hover:bg-yellow-500', confirmLabel: 'Speed Reduced' };
     case 'USE_ALTERNATE_ROUTE':
       return { label: 'Use Alternate Route', color: 'bg-blue-600 hover:bg-blue-500', confirmLabel: 'Route Updated' };
+    case 'PULL_OVER':
+      return { label: 'Pull Over Safely', color: 'bg-red-600 hover:bg-red-500', confirmLabel: 'Pulling Over' };
+    case 'EMERGENCY_SHELTER_IN_VEHICLE':
+      return { label: 'Shelter in Vehicle', color: 'bg-red-600 hover:bg-red-500 animate-pulse', confirmLabel: 'Sheltering in Vehicle' };
+    case 'CONTINUE_MONITORING':
+      return { label: 'Continue Monitoring', color: 'bg-green-600 hover:bg-green-500', confirmLabel: 'Monitoring' };
     default:
       return null;
   }
@@ -67,13 +73,11 @@ function getActionConfig(action) {
 
 export default function AlertBanner({ tier, message, action, countdown, shelters, alternateRoute, onAction }) {
   const [confirmedAction, setConfirmedAction] = useState(null);
-  const [prevTier, setPrevTier] = useState(tier);
 
-  // Reset confirmed state when tier or action changes
-  if (tier !== prevTier) {
-    setPrevTier(tier);
+  // Reset confirmed state when tier changes
+  useEffect(() => {
     setConfirmedAction(null);
-  }
+  }, [tier]);
 
   if (!tier || !message) return null;
   const style = tierStyles[tier] || tierStyles.MONITORING;

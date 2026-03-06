@@ -67,6 +67,7 @@ export default function WeatherMap({
   stormCells = [],
   shelters = [],
   initialCenter,
+  userAcceptedReroute = false,
 }) {
   const defaultCenter = initialCenter || [37.5, -84.3];
 
@@ -97,10 +98,10 @@ export default function WeatherMap({
         <Polyline
           positions={alternateRoute.waypoints.map(p => [p.lat, p.lon])}
           pathOptions={{
-            color: '#2E7D32',
-            weight: 4,
-            opacity: 0.75,
-            dashArray: '12, 8',
+            color: userAcceptedReroute ? '#4CAF50' : '#2E7D32',
+            weight: userAcceptedReroute ? 5 : 4,
+            opacity: userAcceptedReroute ? 0.9 : 0.75,
+            dashArray: userAcceptedReroute ? '' : '12, 8',
           }}
         >
           <Popup>

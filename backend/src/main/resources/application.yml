@@ -21,15 +21,40 @@ spring:
     websocket:
       path: /subscriptions
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
 nws:
   api:
-    base-url: https://api.weather.gov
-    user-agent: "WeatherWise/1.0 (contact@weatherwise.dev)"
+    base-url: ${NWS_API_BASE_URL:https://api.weather.gov}
+    user-agent: ${NWS_USER_AGENT:WeatherWise/1.0 (contact@weatherwise.dev)}
 
 ml:
   service:
-    url: http://localhost:5000
+    url: ${ML_SERVICE_URL:http://localhost:5000}
 
 osrm:
   api:
-    url: http://router.project-osrm.org
+    url: ${OSRM_API_URL:http://router.project-osrm.org}
+
+weatherwise:
+  risk:
+    proximity-weight: 0.25
+    intersection-weight: 0.30
+    severity-weight: 0.20
+    exposure-weight: 0.15
+    escape-weight: 0.10
+    nighttime-factor: 1.15
+    storm-radius-miles: 50.0
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  ingestion:
+    poll-interval-ms: 120000
+    radius-miles: 75.0
+    corridors: "37.09,-84.08;38.04,-84.50;37.75,-84.29"

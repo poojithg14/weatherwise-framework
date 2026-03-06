@@ -27,6 +27,11 @@ public class TripResolver {
             @InputArgument Double toLat,
             @InputArgument Double toLon) {
 
+        validateCoordinate(fromLat, "fromLat");
+        validateCoordinate(fromLon, "fromLon");
+        validateCoordinate(toLat, "toLat");
+        validateCoordinate(toLon, "toLon");
+
         TripSessionService.TripResult result = tripSessionService.startTrip(
                 fromLat, fromLon, toLat, toLon);
 
@@ -54,6 +59,18 @@ public class TripResolver {
             @InputArgument Double heading,
             @InputArgument Double speedMph) {
 
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("sessionId is required");
+        }
+        validateCoordinate(lat, "lat");
+        validateCoordinate(lon, "lon");
+        if (heading == null || heading < 0 || heading > 360) {
+            throw new IllegalArgumentException("heading must be between 0 and 360");
+        }
+        if (speedMph == null || speedMph < 0) {
+            throw new IllegalArgumentException("speedMph must be >= 0");
+        }
+
         RiskAssessment risk = tripSessionService.updatePosition(
                 sessionId, lat, lon, heading, speedMph);
 
@@ -73,6 +90,9 @@ public class TripResolver {
 
     @DgsMutation
     public Map<String, Object> endTrip(@InputArgument String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("sessionId is required");
+        }
         TripSessionService.TripSummaryResult summary = tripSessionService.endTrip(sessionId);
 
         Map<String, Object> response = new HashMap<>();
@@ -82,5 +102,20 @@ public class TripResolver {
         response.put("alertsReceived", summary.alertsReceived());
         response.put("actionsRecommended", summary.actionsRecommended());
         return response;
+    }
+
+    private void validateCoordinate(Double value, String name) {
+        if (value == null) {
+            throw new IllegalArgumentException(name + " is required");
+        }
+        if (name.contains("Lat") || name.equals("lat")) {
+            if (value < -90 || value > 90) {
+                throw new IllegalArgumentException(name + " must be between -90 and 90");
+            }
+        } else {
+            if (value < -180 || value > 180) {
+                throw new IllegalArgumentException(name + " must be between -180 and 180");
+            }
+        }
     }
 }

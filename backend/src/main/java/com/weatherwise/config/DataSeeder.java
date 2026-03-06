@@ -1,7 +1,6 @@
 package com.weatherwise.config;
 
 import com.weatherwise.entity.*;
-import com.weatherwise.model.HazardType;
 import com.weatherwise.model.LocationType;
 import com.weatherwise.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -9,9 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.locationtech.jts.geom.*;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
-
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
 @Component
 @RequiredArgsConstructor
@@ -22,8 +18,6 @@ public class DataSeeder implements CommandLineRunner {
 
     private final SafeLocationRepository safeLocationRepository;
     private final RoadSegmentRepository roadSegmentRepository;
-    private final StormCellRepository stormCellRepository;
-    private final WeatherAlertRepository weatherAlertRepository;
 
     private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), SRID);
 
@@ -34,11 +28,10 @@ public class DataSeeder implements CommandLineRunner {
             return;
         }
 
-        log.info("Seeding I-75 corridor data...");
+        log.info("Seeding I-75 corridor infrastructure data...");
         seedSafeLocations();
         seedRoadSegments();
-        seedStormData();
-        log.info("Seeding complete.");
+        log.info("Seeding complete. Storm data will come from live NWS alerts.");
     }
 
     private Point point(double lon, double lat) {
@@ -51,24 +44,6 @@ public class DataSeeder implements CommandLineRunner {
             jtsCoords[i] = new Coordinate(coords[i][0], coords[i][1]); // lon, lat
         }
         return geometryFactory.createLineString(jtsCoords);
-    }
-
-    private Polygon polygon(double[][] coords) {
-        // Close the ring if not already closed
-        Coordinate[] jtsCoords;
-        if (coords[0][0] != coords[coords.length - 1][0] || coords[0][1] != coords[coords.length - 1][1]) {
-            jtsCoords = new Coordinate[coords.length + 1];
-            for (int i = 0; i < coords.length; i++) {
-                jtsCoords[i] = new Coordinate(coords[i][0], coords[i][1]);
-            }
-            jtsCoords[coords.length] = new Coordinate(coords[0][0], coords[0][1]);
-        } else {
-            jtsCoords = new Coordinate[coords.length];
-            for (int i = 0; i < coords.length; i++) {
-                jtsCoords[i] = new Coordinate(coords[i][0], coords[i][1]);
-            }
-        }
-        return geometryFactory.createPolygon(jtsCoords);
     }
 
     // -----------------------------------------------------------------------
@@ -221,145 +196,4 @@ public class DataSeeder implements CommandLineRunner {
                 .build());
     }
 
-    // -----------------------------------------------------------------------
-    //  Storm Data — May 16, 2025 London KY EF-4 tornado
-    // -----------------------------------------------------------------------
-
-    private void seedStormData() {
-        Instant baseTime = Instant.parse("2025-05-16T21:30:00Z");
-
-        // EF-4 tornado: Russell County → SE of London
-        // Track: SW to NE across I-75 near London, KY
-        String tornadoPredictedPath = """
-                [
-                  {"time": "%s", "vertices": [
-                    {"lat": 37.0400, "lon": -84.1700},
-                    {"lat": 37.0400, "lon": -84.1200},
-                    {"lat": 37.0100, "lon": -84.1200},
-                    {"lat": 37.0100, "lon": -84.1700}
-                  ]},
-                  {"time": "%s", "vertices": [
-                    {"lat": 37.0800, "lon": -84.1200},
-                    {"lat": 37.0800, "lon": -84.0700},
-                    {"lat": 37.0500, "lon": -84.0700},
-                    {"lat": 37.0500, "lon": -84.1200}
-                  ]},
-                  {"time": "%s", "vertices": [
-                    {"lat": 37.1200, "lon": -84.0700},
-                    {"lat": 37.1200, "lon": -84.0200},
-                    {"lat": 37.0900, "lon": -84.0200},
-                    {"lat": 37.0900, "lon": -84.0700}
-                  ]},
-                  {"time": "%s", "vertices": [
-                    {"lat": 37.1600, "lon": -84.0200},
-                    {"lat": 37.1600, "lon": -83.9700},
-                    {"lat": 37.1300, "lon": -83.9700},
-                    {"lat": 37.1300, "lon": -84.0200}
-                  ]}
-                ]
-                """.formatted(
-                baseTime,
-                baseTime.plus(15, ChronoUnit.MINUTES),
-                baseTime.plus(30, ChronoUnit.MINUTES),
-                baseTime.plus(45, ChronoUnit.MINUTES));
-
-        stormCellRepository.save(StormCellEntity.builder()
-                .stormId("cell-tor-20250516-001")
-                .location(point(-84.1450, 37.0250))
-                .velocityX(22.0)
-                .velocityY(20.0)
-                .vil(72.0)
-                .rotation(32.0)
-                .hazardType(HazardType.TORNADO)
-                .predictedPathJson(tornadoPredictedPath)
-                .active(true)
-                .createdAt(baseTime)
-                .expiresAt(baseTime.plus(2, ChronoUnit.HOURS))
-                .build());
-
-        // Trailing severe thunderstorm cell
-        String svrPredictedPath = """
-                [
-                  {"time": "%s", "vertices": [
-                    {"lat": 36.9800, "lon": -84.2500},
-                    {"lat": 36.9800, "lon": -84.2000},
-                    {"lat": 36.9500, "lon": -84.2000},
-                    {"lat": 36.9500, "lon": -84.2500}
-                  ]},
-                  {"time": "%s", "vertices": [
-                    {"lat": 37.0200, "lon": -84.1800},
-                    {"lat": 37.0200, "lon": -84.1300},
-                    {"lat": 36.9900, "lon": -84.1300},
-                    {"lat": 36.9900, "lon": -84.1800}
-                  ]}
-                ]
-                """.formatted(
-                baseTime,
-                baseTime.plus(20, ChronoUnit.MINUTES));
-
-        stormCellRepository.save(StormCellEntity.builder()
-                .stormId("cell-svr-20250516-002")
-                .location(point(-84.2250, 36.9650))
-                .velocityX(18.0)
-                .velocityY(16.0)
-                .vil(48.0)
-                .rotation(6.5)
-                .hazardType(HazardType.SEVERE_THUNDERSTORM)
-                .predictedPathJson(svrPredictedPath)
-                .active(true)
-                .createdAt(baseTime)
-                .expiresAt(baseTime.plus(2, ChronoUnit.HOURS))
-                .build());
-
-        // Tornado Warning — covers I-75 exits 25-41 near London
-        weatherAlertRepository.save(WeatherAlertEntity.builder()
-                .alertId("NWS-TOR-20250516-0042")
-                .hazardType(HazardType.TORNADO)
-                .severity("Extreme")
-                .polygon(polygon(new double[][]{
-                        {-84.2000, 37.1600},
-                        {-83.9500, 37.1600},
-                        {-83.9500, 37.0000},
-                        {-84.2000, 37.0000}
-                }))
-                .effectiveTime(baseTime)
-                .expirationTime(baseTime.plus(45, ChronoUnit.MINUTES))
-                .active(true)
-                .build());
-
-        // Severe Thunderstorm Warning — trailing SW
-        weatherAlertRepository.save(WeatherAlertEntity.builder()
-                .alertId("NWS-SVR-20250516-0038")
-                .hazardType(HazardType.SEVERE_THUNDERSTORM)
-                .severity("Severe")
-                .polygon(polygon(new double[][]{
-                        {-84.3000, 37.0200},
-                        {-84.1500, 37.0200},
-                        {-84.1500, 36.9200},
-                        {-84.3000, 36.9200}
-                }))
-                .effectiveTime(baseTime.minus(10, ChronoUnit.MINUTES))
-                .expirationTime(baseTime.plus(50, ChronoUnit.MINUTES))
-                .active(true)
-                .build());
-
-        // Flash Flood Watch — broader area around London
-        weatherAlertRepository.save(WeatherAlertEntity.builder()
-                .alertId("NWS-FFA-20250516-0025")
-                .hazardType(HazardType.FLASH_FLOOD)
-                .severity("Moderate")
-                .polygon(polygon(new double[][]{
-                        {-84.4000, 37.3000},
-                        {-83.8000, 37.3000},
-                        {-83.8000, 36.8000},
-                        {-84.4000, 36.8000}
-                }))
-                .effectiveTime(baseTime.minus(3, ChronoUnit.HOURS))
-                .expirationTime(baseTime.plus(6, ChronoUnit.HOURS))
-                .active(true)
-                .build());
-
-        log.info("Seeded {} storm cells and {} weather alerts.",
-                stormCellRepository.count(), weatherAlertRepository.count());
-    }
 }
