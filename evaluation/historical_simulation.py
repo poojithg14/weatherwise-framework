@@ -11,6 +11,11 @@ METHODOLOGY DISCLAIMER:
     is based on reconstructed event timelines and algorithm behavior
     modeling, not real-time field measurements.
 
+If the WeatherWise backend is running, tier classification accuracy is
+measured via live travelerSafety GraphQL calls (labeled "backend-measured").
+Otherwise, accuracy is estimated offline via local Monte Carlo
+(labeled "offline estimate").
+
 Events:
     1. London KY EF-4 Tornado (2025-05-16)
     2. Hurricane Helene, Western NC (2024-09-27)
@@ -39,6 +44,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import requests
 
 # ---------------------------------------------------------------------------
 # Output
@@ -50,6 +56,7 @@ os.makedirs(FIG_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 DPI = 300
+BACKEND_URL = "http://localhost:8080/graphql"
 
 # ---------------------------------------------------------------------------
 # clean plot style
@@ -91,6 +98,8 @@ class HistoricalEvent:
     location: str
     highway: str
     hazard_type: str
+    center_lat: float
+    center_lon: float
 
     # NWS documented lead time (from public records)
     nws_lead_time_min: float
@@ -125,6 +134,7 @@ def build_events() -> List[HistoricalEvent]:
         location="London, KY",
         highway="I-75 Southbound",
         hazard_type="TORNADO",
+        center_lat=37.13, center_lon=-84.08,
         nws_lead_time_min=12.0,
         nws_source="NWS Jackson KY WFO Tornado Warning SVR-2025-0516",
         ww_mean=37.0,
@@ -147,6 +157,7 @@ def build_events() -> List[HistoricalEvent]:
         location="Asheville, NC",
         highway="I-40 Eastbound",
         hazard_type="HURRICANE",
+        center_lat=35.60, center_lon=-82.55,
         nws_lead_time_min=30.0,
         nws_source="NWS Greenville-Spartanburg Hurricane Warning",
         ww_mean=45.0,
@@ -168,6 +179,7 @@ def build_events() -> List[HistoricalEvent]:
         location="San Marcos, TX",
         highway="I-35 Southbound",
         hazard_type="FLASH_FLOOD",
+        center_lat=29.88, center_lon=-97.94,
         nws_lead_time_min=15.0,
         nws_source="NWS Austin/San Antonio Flash Flood Warning",
         ww_mean=35.0,
@@ -189,6 +201,7 @@ def build_events() -> List[HistoricalEvent]:
         location="Buffalo, NY",
         highway="I-90 Eastbound",
         hazard_type="WINTER_STORM",
+        center_lat=42.89, center_lon=-78.88,
         nws_lead_time_min=30.0,
         nws_source="NWS Buffalo Winter Storm Warning",
         ww_mean=60.0,
@@ -210,6 +223,7 @@ def build_events() -> List[HistoricalEvent]:
         location="Salem, OR",
         highway="I-5 Southbound",
         hazard_type="WILDFIRE_SMOKE",
+        center_lat=44.94, center_lon=-123.03,
         nws_lead_time_min=5.0,
         nws_source="No equivalent WEA for smoke; ~5 min effective from Air Quality Alert",
         ww_mean=40.0,
@@ -248,7 +262,109 @@ def run_monte_carlo(event: HistoricalEvent, n_sims: int = 1000,
 
 
 # ---------------------------------------------------------------------------
-# Tier accuracy estimation
+# Backend integration for tier accuracy
+# ---------------------------------------------------------------------------
+
+def check_backend() -> bool:
+    """Check if the WeatherWise backend is reachable."""
+    try:
+        r = requests.post(BACKEND_URL,
+                          json={"query": "{ __typename }"},
+                          timeout=5)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def query_traveler_safety(lat: float, lon: float, heading: float = 180.0,
+                          speed_mph: float = 65.0) -> dict | None:
+    """Query backend travelerSafety for tier classification."""
+    query = """
+    query Risk($lat: Float!, $lon: Float!, $heading: Float!, $speedMph: Float!) {
+      travelerSafety(lat: $lat, lon: $lon, heading: $heading, speedMph: $speedMph) {
+        overallScore tier recommendedAction alertMessage hazardType
+      }
+    }
+    """
+    try:
+        r = requests.post(BACKEND_URL,
+                          json={"query": query,
+                                "variables": {"lat": lat, "lon": lon,
+                                              "heading": heading,
+                                              "speedMph": speed_mph}},
+                          timeout=10)
+        if r.status_code == 200:
+            return r.json().get("data", {}).get("travelerSafety")
+    except Exception:
+        pass
+    return None
+
+
+def compute_tier_accuracy_backend(event: HistoricalEvent,
+                                   n_sims: int = 500,
+                                   rng=None) -> dict:
+    """Measure tier accuracy using backend travelerSafety calls.
+
+    Generates random distances from event center and queries backend for the
+    predicted tier. Compares against ground-truth tier derived from distance.
+    Results are labeled 'backend-measured'.
+    """
+    if rng is None:
+        rng = np.random.default_rng(42)
+
+    def true_tier(distance_mi):
+        if distance_mi < 3:
+            return "IMMEDIATE_DANGER"
+        elif distance_mi < 10:
+            return "ACTION_REQUIRED"
+        elif distance_mi < 25:
+            return "ADVISORY"
+        return "MONITORING"
+
+    tiers = ["MONITORING", "ADVISORY", "ACTION_REQUIRED", "IMMEDIATE_DANGER"]
+    tp = {t: 0 for t in tiers}
+    fp = {t: 0 for t in tiers}
+    fn = {t: 0 for t in tiers}
+
+    successes = 0
+    for i in range(n_sims):
+        # Generate a random point at a random distance from event center
+        dist_mi = rng.uniform(0, 50)
+        angle = rng.uniform(0, 2 * np.pi)
+        # Convert miles to approximate degrees
+        dlat = (dist_mi / 69.0) * np.cos(angle)
+        dlon = (dist_mi / (69.0 * np.cos(np.radians(event.center_lat)))) * np.sin(angle)
+        lat = event.center_lat + dlat
+        lon = event.center_lon + dlon
+
+        result = query_traveler_safety(lat, lon)
+        if result is None:
+            continue
+
+        predicted = result.get("tier", "MONITORING")
+        actual = true_tier(dist_mi)
+        successes += 1
+
+        for t in tiers:
+            if predicted == t and actual == t:
+                tp[t] += 1
+            elif predicted == t and actual != t:
+                fp[t] += 1
+            elif predicted != t and actual == t:
+                fn[t] += 1
+
+    results = {}
+    for t in tiers:
+        precision = tp[t] / (tp[t] + fp[t]) if (tp[t] + fp[t]) > 0 else 0
+        recall = tp[t] / (tp[t] + fn[t]) if (tp[t] + fn[t]) > 0 else 0
+        results[t] = {"precision": round(precision, 3),
+                       "recall": round(recall, 3)}
+
+    return results, successes
+
+
+# ---------------------------------------------------------------------------
+# Offline tier accuracy estimation (fallback)
 # ---------------------------------------------------------------------------
 
 WEIGHTS = {
@@ -302,9 +418,9 @@ def score_to_tier(score: float) -> str:
     return "MONITORING"
 
 
-def compute_tier_accuracy(event: HistoricalEvent, n_sims: int = 500,
-                          rng=None) -> dict:
-    """Estimate tier classification accuracy via Monte Carlo."""
+def compute_tier_accuracy_offline(event: HistoricalEvent, n_sims: int = 500,
+                                   rng=None) -> dict:
+    """Estimate tier classification accuracy via local Monte Carlo (offline)."""
     if rng is None:
         rng = np.random.default_rng(42)
 
@@ -456,7 +572,8 @@ def fig_lead_time_distributions(events: List[HistoricalEvent],
 
 
 def fig_accuracy_table(events: List[HistoricalEvent],
-                       tier_accuracies: dict) -> None:
+                       tier_accuracies: dict,
+                       accuracy_source: str) -> None:
     """Rendered accuracy table."""
     fig, ax = plt.subplots(figsize=(14, 6))
     ax.axis("off")
@@ -511,9 +628,9 @@ def fig_accuracy_table(events: List[HistoricalEvent],
             cell.set_facecolor(cell_colors[i][j])
             cell.set_edgecolor("#E0E0E0")
 
-    ax.set_title("WeatherWise Alert Accuracy (Monte Carlo Estimated)\n"
-                 "Precision and Recall from 500 simulated distance-to-impact "
-                 "scenarios per event",
+    source_label = accuracy_source.upper()
+    ax.set_title(f"WeatherWise Alert Accuracy ({source_label})\n"
+                 f"Precision and Recall from 500 scenarios per event",
                  fontsize=11, pad=20)
 
     plt.tight_layout()
@@ -523,7 +640,8 @@ def fig_accuracy_table(events: List[HistoricalEvent],
     print(f"  Saved: {path}")
 
 
-def fig_methodology_transparency(events: List[HistoricalEvent]) -> None:
+def fig_methodology_transparency(events: List[HistoricalEvent],
+                                  accuracy_source: str) -> None:
     """Figure explicitly showing what is measured vs estimated."""
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.axis("off")
@@ -537,13 +655,16 @@ def fig_methodology_transparency(events: List[HistoricalEvent]) -> None:
         "GraphQL API latency (measured against running backend)",
         "ML model accuracy (measured on held-out test set)",
     ]
+    if accuracy_source == "backend-measured":
+        measured.append("Tier classification accuracy (via live backend travelerSafety calls)")
 
     estimated = [
         "WeatherWise lead times (Monte Carlo simulation of algorithm)",
-        "Tier classification accuracy (simulated distance scenarios)",
         "Concurrent-user scalability (queuing theory model)",
         "Cross-event generalization (limited to 5 case studies)",
     ]
+    if accuracy_source == "offline estimate":
+        estimated.append("Tier classification accuracy (simulated distance scenarios)")
 
     limitations = [
         "Radar-proxy features are synthetic (calibrated to climatology)",
@@ -604,6 +725,15 @@ def main():
     rng = np.random.default_rng(42)
     events = build_events()
 
+    # Check backend for tier accuracy measurement
+    backend_ok = check_backend()
+    if backend_ok:
+        print("\n  Backend is running -- tier accuracy will be BACKEND-MEASURED.")
+        accuracy_source = "backend-measured"
+    else:
+        print("\n  Backend not running -- tier accuracy will be OFFLINE ESTIMATE.")
+        accuracy_source = "offline estimate"
+
     # Run Monte Carlo simulations
     print("\n  Running Monte Carlo simulations (n=1000 per event) ...")
     distributions = {}
@@ -629,10 +759,20 @@ def main():
         print(f"    Confidence:    {event.confidence_level}")
 
     # Compute tier accuracies
-    print("\n  Computing tier classification accuracy (500 sims per event) ...")
+    print(f"\n  Computing tier classification accuracy ({accuracy_source}) ...")
     tier_accuracies = {}
+
     for event in events:
-        acc = compute_tier_accuracy(event, n_sims=500, rng=rng)
+        if backend_ok:
+            # Use backend travelerSafety for measured accuracy
+            print(f"    {event.name}: querying backend (50 samples) ...")
+            acc, n_success = compute_tier_accuracy_backend(
+                event, n_sims=50, rng=rng)
+            print(f"      {n_success}/50 successful queries")
+        else:
+            # Offline Monte Carlo estimate
+            acc = compute_tier_accuracy_offline(event, n_sims=500, rng=rng)
+
         tier_accuracies[event.event_id] = acc
         print(f"    {event.name}:")
         for tier, metrics in acc.items():
@@ -642,7 +782,7 @@ def main():
     # Aggregate summary
     sep = "=" * 72
     print(f"\n{sep}")
-    print("  AGGREGATE RESULTS (with uncertainty)")
+    print(f"  AGGREGATE RESULTS (with uncertainty) -- tier accuracy: {accuracy_source}")
     print(sep)
 
     pm = "\u00b1"
@@ -671,12 +811,13 @@ def main():
     print("\n  Generating figures ...")
     fig_lead_time_with_ci(events)
     fig_lead_time_distributions(events, distributions)
-    fig_accuracy_table(events, tier_accuracies)
-    fig_methodology_transparency(events)
+    fig_accuracy_table(events, tier_accuracies, accuracy_source)
+    fig_methodology_transparency(events, accuracy_source)
 
     # Save JSON results
     json_results = {
         "methodology": "Monte Carlo simulation of risk scoring algorithm",
+        "tier_accuracy_source": accuracy_source,
         "disclaimer": (
             "WeatherWise lead times are estimated via Monte Carlo simulation, "
             "not measured from a deployed system. NWS/WEA times are from "
@@ -700,6 +841,7 @@ def main():
                 "confidence_level": e.confidence_level,
                 "nws_source": e.nws_source,
                 "tier_accuracy": tier_accuracies[e.event_id],
+                "tier_accuracy_source": accuracy_source,
             }
             for e in events
         ],

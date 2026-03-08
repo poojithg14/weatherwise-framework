@@ -5,8 +5,7 @@ WeatherWise Evaluation Suite -- Real GraphQL Benchmark
 Performs HTTP benchmarking against the WeatherWise backend GraphQL endpoint.
 Uses ONLY the requests library (no aiohttp). Concurrency via ThreadPoolExecutor.
 
-If the backend is not running, falls back to a clearly-labeled SIMULATED
-benchmark so figures and results are always generated.
+Requires the backend to be running at localhost:8080.
 
 Endpoints tested:
     http://localhost:8080/graphql
@@ -50,71 +49,102 @@ DPI = 300
 BACKEND_URL = "http://localhost:8080/graphql"
 
 # ---------------------------------------------------------------------------
-# GraphQL queries
+# GraphQL queries  (matching schema.graphqls exactly)
 # ---------------------------------------------------------------------------
 COMBINED_QUERY = """
 query BenchmarkCombined($lat: Float!, $lon: Float!, $radiusMiles: Float!) {
-  activeStormCells(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
-    id hazardType latitude longitude intensity
+  stormCells(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
+    id hazardType lat lon vil rotation
   }
-  weatherAlerts(lat: $lat, lon: $lon) {
-    id alertType severity headline
+  activeAlerts(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
+    id type severity polygon { lat lon } effectiveTime expirationTime
   }
-  nearestSafeLocations(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
-    id name latitude longitude locationType hasIndoorShelter
+  safeLocations(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
+    name locationType lat lon distanceMiles hasIndoorShelter exitNumber
   }
 }
 """
 
 STORM_QUERY = """
 query StormCells($lat: Float!, $lon: Float!, $radiusMiles: Float!) {
-  activeStormCells(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
-    id hazardType latitude longitude intensity
+  stormCells(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
+    id hazardType lat lon vil rotation velocityX velocityY
+    predictedPath { time vertices { lat lon } }
   }
 }
 """
 
 ALERT_QUERY = """
-query Alerts($lat: Float!, $lon: Float!) {
-  weatherAlerts(lat: $lat, lon: $lon) {
-    id alertType severity headline
+query Alerts($lat: Float!, $lon: Float!, $radiusMiles: Float!) {
+  activeAlerts(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
+    id type severity polygon { lat lon } effectiveTime expirationTime
   }
 }
 """
 
 SAFE_LOC_QUERY = """
 query SafeLocations($lat: Float!, $lon: Float!, $radiusMiles: Float!) {
-  nearestSafeLocations(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
-    id name latitude longitude locationType hasIndoorShelter
+  safeLocations(lat: $lat, lon: $lon, radiusMiles: $radiusMiles) {
+    name locationType lat lon distanceMiles hasIndoorShelter exitNumber
   }
 }
 """
 
 ROUTE_QUERY = """
-query Route($lat: Float!, $lon: Float!) {
-  safeRoute(startLat: $lat, startLon: $lon, endLat: 37.20, endLon: -84.20) {
-    totalDistanceMiles estimatedTimeMinutes
+query Route($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!) {
+  alternateRoutes(fromLat: $fromLat, fromLon: $fromLon, toLat: $toLat, toLon: $toLon, avoidHazards: true) {
+    waypoints { lat lon } distanceMiles estimatedMinutes safetyScore
   }
 }
 """
 
 RISK_QUERY = """
-query Risk($lat: Float!, $lon: Float!) {
-  travelerRiskScore(lat: $lat, lon: $lon, bearing: 180.0, speedMph: 65.0) {
-    riskScore alertTier
+query Risk($lat: Float!, $lon: Float!, $heading: Float!, $speedMph: Float!) {
+  travelerSafety(lat: $lat, lon: $lon, heading: $heading, speedMph: $speedMph) {
+    overallScore tier timeToIntersectionMinutes recommendedAction
+    hazardType alertMessage hazardSpecificGuidance
+  }
+}
+"""
+
+# Trip lifecycle mutations
+START_TRIP_MUTATION = """
+mutation StartTrip($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!) {
+  startTrip(fromLat: $fromLat, fromLon: $fromLon, toLat: $toLat, toLon: $toLon) {
+    sessionId route { lat lon } estimatedDistanceMiles estimatedTimeMinutes
+  }
+}
+"""
+
+UPDATE_POSITION_MUTATION = """
+mutation UpdatePosition($sessionId: ID!, $lat: Float!, $lon: Float!, $heading: Float!, $speedMph: Float!) {
+  updatePosition(sessionId: $sessionId, lat: $lat, lon: $lon, heading: $heading, speedMph: $speedMph) {
+    overallScore tier recommendedAction alertMessage hazardType
+  }
+}
+"""
+
+END_TRIP_MUTATION = """
+mutation EndTrip($sessionId: ID!) {
+  endTrip(sessionId: $sessionId) {
+    totalDistanceMiles totalTimeMinutes maxRiskScore alertsReceived actionsRecommended
   }
 }
 """
 
 VARIABLES_FULL = {"lat": 37.0708, "lon": -84.0858, "radiusMiles": 50.0}
-VARIABLES_LAT_LON = {"lat": 37.0708, "lon": -84.0858}
+VARIABLES_ROUTE = {
+    "fromLat": 37.0708, "fromLon": -84.0858,
+    "toLat": 37.20, "toLon": -84.20,
+}
+VARIABLES_RISK = {"lat": 37.0708, "lon": -84.0858, "heading": 180.0, "speedMph": 65.0}
 
 SEPARATE_QUERIES = [
     (STORM_QUERY, VARIABLES_FULL),
-    (ALERT_QUERY, VARIABLES_LAT_LON),
+    (ALERT_QUERY, VARIABLES_FULL),
     (SAFE_LOC_QUERY, VARIABLES_FULL),
-    (ROUTE_QUERY, VARIABLES_LAT_LON),
-    (RISK_QUERY, VARIABLES_LAT_LON),
+    (ROUTE_QUERY, VARIABLES_ROUTE),
+    (RISK_QUERY, VARIABLES_RISK),
 ]
 
 # ---------------------------------------------------------------------------
@@ -245,6 +275,63 @@ def run_five_separate(session: requests.Session) -> tuple:
     return elapsed, total_bytes, had_error
 
 
+def run_trip_lifecycle(session: requests.Session) -> tuple:
+    """Benchmark startTrip -> 5x updatePosition -> endTrip. Returns (total_ms, bytes, error)."""
+    total_start = time.perf_counter()
+    total_bytes = 0
+    had_error = False
+
+    # startTrip
+    payload = {"query": START_TRIP_MUTATION, "variables": VARIABLES_ROUTE}
+    try:
+        resp = session.post(BACKEND_URL, json=payload, timeout=30)
+        total_bytes += len(resp.content)
+        if resp.status_code != 200:
+            had_error = True
+            elapsed = (time.perf_counter() - total_start) * 1000
+            return elapsed, total_bytes, True
+
+        data = resp.json().get("data", {}).get("startTrip", {})
+        session_id = data.get("sessionId")
+        if not session_id:
+            elapsed = (time.perf_counter() - total_start) * 1000
+            return elapsed, total_bytes, True
+    except Exception:
+        elapsed = (time.perf_counter() - total_start) * 1000
+        return elapsed, total_bytes, True
+
+    # 5x updatePosition (simulate traveler moving south)
+    for i in range(5):
+        lat = 37.0708 + i * 0.02
+        lon = -84.0858 - i * 0.01
+        update_vars = {
+            "sessionId": session_id,
+            "lat": lat, "lon": lon,
+            "heading": 180.0, "speedMph": 65.0,
+        }
+        payload = {"query": UPDATE_POSITION_MUTATION, "variables": update_vars}
+        try:
+            resp = session.post(BACKEND_URL, json=payload, timeout=30)
+            total_bytes += len(resp.content)
+            if resp.status_code != 200:
+                had_error = True
+        except Exception:
+            had_error = True
+
+    # endTrip
+    payload = {"query": END_TRIP_MUTATION, "variables": {"sessionId": session_id}}
+    try:
+        resp = session.post(BACKEND_URL, json=payload, timeout=30)
+        total_bytes += len(resp.content)
+        if resp.status_code != 200:
+            had_error = True
+    except Exception:
+        had_error = True
+
+    elapsed = (time.perf_counter() - total_start) * 1000
+    return elapsed, total_bytes, had_error
+
+
 # ---------------------------------------------------------------------------
 # Benchmark runners
 # ---------------------------------------------------------------------------
@@ -309,45 +396,21 @@ def benchmark_concurrent(n_iterations: int, concurrency: int) -> tuple:
     return combined, separate
 
 
-# ---------------------------------------------------------------------------
-# Simulated fallback
-# ---------------------------------------------------------------------------
+def benchmark_trip_lifecycle(n_iterations: int) -> BenchmarkResult:
+    """Benchmark the trip lifecycle: startTrip -> updatePosition -> endTrip."""
+    result = BenchmarkResult(label="Trip Lifecycle")
+    session = requests.Session()
 
-def run_simulated_benchmark() -> tuple:
-    """Generate realistic simulated benchmark data when backend is unavailable."""
-    print("\n  *** SIMULATED BENCHMARK ***")
-    print("  Backend not reachable at http://localhost:8080/graphql")
-    print("  Start backend: cd backend && bash mvnw spring-boot:run")
-    print("  Then re-run for real measurements.\n")
+    print(f"    Trip lifecycle (start+5xUpdate+end) x {n_iterations} ...")
+    for _ in range(n_iterations):
+        ms, nbytes, err = run_trip_lifecycle(session)
+        result.latencies_ms.append(ms)
+        result.total_bytes += nbytes
+        if err:
+            result.errors += 1
 
-    rng = np.random.default_rng(42)
-    n = 1000
-
-    combined = BenchmarkResult(label="GraphQL Combined (SIMULATED)")
-    combined.latencies_ms = rng.normal(45, 12, n).clip(15).tolist()
-    combined.total_bytes = int(n * 3800)
-
-    separate = BenchmarkResult(label="5 Separate Queries (SIMULATED)")
-    separate.latencies_ms = rng.normal(120, 25, n).clip(40).tolist()
-    separate.total_bytes = int(n * 9200)
-
-    # Simulated concurrency results
-    concurrency_results = {}
-    for c in [10, 50, 100]:
-        c_combined = BenchmarkResult(label=f"Combined (c={c}, SIMULATED)")
-        c_separate = BenchmarkResult(label=f"Separate (c={c}, SIMULATED)")
-        # Latency increases with concurrency
-        scale = 1 + (c - 10) * 0.005
-        c_combined.latencies_ms = (rng.normal(45 * scale, 12 * scale, 200)
-                                    .clip(15).tolist())
-        c_separate.latencies_ms = (rng.normal(120 * scale, 25 * scale, 200)
-                                    .clip(40).tolist())
-        c_combined.total_bytes = int(200 * 3800)
-        c_separate.total_bytes = int(200 * 9200)
-        concurrency_results[c] = {"combined": c_combined,
-                                   "separate": c_separate}
-
-    return combined, separate, concurrency_results
+    session.close()
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -355,16 +418,24 @@ def run_simulated_benchmark() -> tuple:
 # ---------------------------------------------------------------------------
 
 def fig_latency_boxplot(combined: BenchmarkResult,
-                        separate: BenchmarkResult) -> None:
+                        separate: BenchmarkResult,
+                        lifecycle: BenchmarkResult | None = None) -> None:
     """Box plot comparing combined vs separate query latencies."""
     fig, ax = plt.subplots(figsize=(8, 5))
 
-    bp = ax.boxplot([combined.latencies_ms, separate.latencies_ms],
-                    labels=["Combined\nGraphQL Query", "5 Separate\nQueries"],
-                    patch_artist=True, widths=0.45,
-                    showmeans=True, meanline=True)
+    data = [combined.latencies_ms, separate.latencies_ms]
+    labels = ["Combined\nGraphQL Query", "5 Separate\nQueries"]
+    colors = [COLOR_COMBINED, COLOR_SEPARATE]
 
-    for patch, color in zip(bp["boxes"], [COLOR_COMBINED, COLOR_SEPARATE]):
+    if lifecycle and lifecycle.latencies_ms:
+        data.append(lifecycle.latencies_ms)
+        labels.append("Trip\nLifecycle")
+        colors.append("#FF7043")
+
+    bp = ax.boxplot(data, labels=labels, patch_artist=True,
+                    widths=0.45, showmeans=True, meanline=True)
+
+    for patch, color in zip(bp["boxes"], colors):
         patch.set_facecolor(color)
         patch.set_alpha(0.8)
 
@@ -373,18 +444,13 @@ def fig_latency_boxplot(combined: BenchmarkResult,
                  f"({combined.count} iterations per strategy)")
 
     # Annotate means
-    for i, r in enumerate([combined, separate], 1):
+    results_list = [combined, separate]
+    if lifecycle and lifecycle.latencies_ms:
+        results_list.append(lifecycle)
+    for i, r in enumerate(results_list, 1):
         ax.text(i, r.mean + 2, f"mean={r.mean:.1f}ms",
                 ha="center", fontsize=8, fontweight="bold",
                 color="#333")
-
-    is_sim = "SIMULATED" in combined.label
-    if is_sim:
-        ax.text(0.98, 0.02, "SIMULATED DATA\n(backend not running)",
-                transform=ax.transAxes, ha="right", va="bottom",
-                fontsize=8, color="#F44336", fontweight="bold",
-                bbox=dict(facecolor="#FFF3E0", edgecolor="#F44336",
-                          boxstyle="round,pad=0.3"))
 
     plt.tight_layout()
     path = os.path.join(FIG_DIR, "real_latency_boxplot.png")
@@ -472,7 +538,8 @@ def fig_payload(combined: BenchmarkResult,
 
 
 def fig_summary(combined: BenchmarkResult, separate: BenchmarkResult,
-                concurrency_results: dict) -> None:
+                concurrency_results: dict,
+                lifecycle: BenchmarkResult | None = None) -> None:
     """Multi-panel summary figure."""
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
@@ -522,9 +589,7 @@ def fig_summary(combined: BenchmarkResult, separate: BenchmarkResult,
                  transform=ax3.transAxes, fontsize=10, color="#999")
         ax3.set_title("Concurrency Scaling")
 
-    is_sim = "SIMULATED" in combined.label
-    label = " (SIMULATED)" if is_sim else ""
-    fig.suptitle(f"WeatherWise - GraphQL Benchmark Summary{label}",
+    fig.suptitle("WeatherWise - GraphQL Benchmark Summary",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
     path = os.path.join(FIG_DIR, "real_summary.png")
@@ -547,46 +612,47 @@ def main():
     print(f"\n  Checking backend at {BACKEND_URL} ...")
     backend_ok = check_backend()
 
-    if backend_ok:
-        print("  Backend is running.")
+    if not backend_ok:
+        print("  ERROR: Backend is not running.")
+        print("  Start it: cd backend && bash mvnw spring-boot:run")
+        print("  Or: docker compose up -d")
+        return
 
-        # Schema discovery
-        schema = discover_schema()
-        if schema:
-            types = schema.get("data", {}).get("__schema", {}).get("types", [])
-            print(f"  Schema discovered: {len(types)} types")
+    print("  Backend is running.")
 
-        # Warmup
-        print("\n  Warming up (50 requests) ...")
-        session = requests.Session()
-        for _ in range(50):
-            run_single_combined(session)
-        session.close()
+    # Schema discovery
+    schema = discover_schema()
+    if schema:
+        types = schema.get("data", {}).get("__schema", {}).get("types", [])
+        print(f"  Schema discovered: {len(types)} types")
 
-        # Main benchmark: 1000 iterations
-        n = 1000
-        print(f"\n  Running main benchmark ({n} iterations) ...")
-        combined, separate = benchmark_sequential(n)
+    # Warmup
+    print("\n  Warming up (50 requests) ...")
+    session = requests.Session()
+    for _ in range(50):
+        run_single_combined(session)
+    session.close()
 
-        # Concurrency test: 10, 50, 100
-        concurrency_results = {}
-        for c in [10, 50, 100]:
-            n_c = 200
-            print(f"  Concurrency={c}: {n_c} iterations ...")
-            c_comb, c_sep = benchmark_concurrent(n_c, c)
-            concurrency_results[c] = {"combined": c_comb, "separate": c_sep}
+    # Main benchmark: 1000 iterations
+    n = 1000
+    print(f"\n  Running main benchmark ({n} iterations) ...")
+    combined, separate = benchmark_sequential(n)
 
-        is_simulated = False
-    else:
-        combined, separate, concurrency_results = run_simulated_benchmark()
-        is_simulated = True
+    # Trip lifecycle benchmark
+    lifecycle = benchmark_trip_lifecycle(100)
+
+    # Concurrency test: 10, 50, 100
+    concurrency_results = {}
+    for c in [10, 50, 100]:
+        n_c = 200
+        print(f"  Concurrency={c}: {n_c} iterations ...")
+        c_comb, c_sep = benchmark_concurrent(n_c, c)
+        concurrency_results[c] = {"combined": c_comb, "separate": c_sep}
 
     # Print results
     sep = "=" * 72
     print(f"\n{sep}")
     print("  BENCHMARK RESULTS")
-    if is_simulated:
-        print("  *** SIMULATED DATA - Backend was not running ***")
     print(sep)
 
     reduction = ((1 - combined.mean / separate.mean) * 100
@@ -605,6 +671,15 @@ def main():
     print(f"  {'Std deviation (ms)':<25s} {combined.stdev:>12.1f} {separate.stdev:>12.1f}")
     print(f"  {'Avg payload (KB)':<25s} {c_kb:>12.1f} {s_kb:>12.1f}")
 
+    if lifecycle.latencies_ms:
+        print(f"\n  Trip Lifecycle (startTrip + 5x updatePosition + endTrip):")
+        print(f"    Iterations: {lifecycle.count}")
+        print(f"    Errors:     {lifecycle.errors}")
+        print(f"    Mean:       {lifecycle.mean:.1f} ms")
+        print(f"    P95:        {lifecycle.p95:.1f} ms")
+        print(f"    P99:        {lifecycle.p99:.1f} ms")
+        print(f"    Avg payload:{lifecycle.avg_payload_kb:.1f} KB")
+
     if concurrency_results:
         print(f"\n  Concurrency Scaling:")
         for c in sorted(concurrency_results.keys()):
@@ -614,14 +689,14 @@ def main():
 
     # Generate figures
     print("\n  Generating figures ...")
-    fig_latency_boxplot(combined, separate)
+    fig_latency_boxplot(combined, separate, lifecycle)
     fig_percentiles(combined, separate)
     fig_payload(combined, separate)
-    fig_summary(combined, separate, concurrency_results)
+    fig_summary(combined, separate, concurrency_results, lifecycle)
 
     # Save JSON results
     json_results = {
-        "simulated": is_simulated,
+        "simulated": False,
         "combined_query": {
             "iterations": combined.count,
             "errors": combined.errors,
@@ -641,6 +716,14 @@ def main():
             "p99_ms": round(separate.p99, 2),
             "stdev_ms": round(separate.stdev, 2),
             "avg_payload_kb": round(s_kb, 2),
+        },
+        "trip_lifecycle": {
+            "iterations": lifecycle.count,
+            "errors": lifecycle.errors,
+            "mean_ms": round(lifecycle.mean, 2),
+            "p95_ms": round(lifecycle.p95, 2),
+            "p99_ms": round(lifecycle.p99, 2),
+            "avg_payload_kb": round(lifecycle.avg_payload_kb, 2),
         },
         "latency_reduction_pct": round(reduction, 1),
         "concurrency": {

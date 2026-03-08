@@ -3,12 +3,14 @@
 WeatherWise Evaluation Suite -- Live NWS Weather Integration Test
 ===================================================================
 Queries the live NWS (National Weather Service) API to find active
-weather alerts, then optionally simulates a traveler driving through
-the alert area using WeatherWise's risk scoring algorithm.
+weather alerts, then drives a traveler through the alert area using
+the WeatherWise backend (startTrip -> updatePosition -> endTrip).
 
-If the backend is running at localhost:8080, it also sends the alert
-data through the GraphQL API to demonstrate end-to-end integration.
-If not, it saves an NWS alert snapshot only.
+All risk scoring is done by the backend -- no local compute_risk_score.
+
+If the backend is not running, saves an NWS alert snapshot only.
+If NWS returns 0 alerts, that is reported as real data (no simulated
+fallback).
 
 NWS API: https://api.weather.gov  (free, no API key required)
 
@@ -69,36 +71,6 @@ plt.rcParams.update({
     "axes.spines.right": False,
 })
 
-# Risk scoring weights (from the paper)
-WEIGHTS = {
-    "proximity": 0.25,
-    "intersection": 0.30,
-    "severity": 0.20,
-    "exposure": 0.15,
-    "escape": 0.10,
-}
-
-SEVERITY_COEFFICIENTS = {
-    "Tornado Warning": 1.00,
-    "Tornado Watch": 0.60,
-    "Severe Thunderstorm Warning": 0.75,
-    "Severe Thunderstorm Watch": 0.45,
-    "Flash Flood Warning": 0.80,
-    "Flash Flood Watch": 0.50,
-    "Flood Warning": 0.65,
-    "Flood Watch": 0.40,
-    "Winter Storm Warning": 0.55,
-    "Winter Storm Watch": 0.35,
-    "Blizzard Warning": 0.70,
-    "Ice Storm Warning": 0.65,
-    "Hurricane Warning": 0.95,
-    "Hurricane Watch": 0.70,
-    "Tropical Storm Warning": 0.80,
-    "Red Flag Warning": 0.60,
-    "Excessive Heat Warning": 0.50,
-    "Wind Advisory": 0.30,
-}
-
 TIER_COLORS = {
     "MONITORING": "#4CAF50",
     "ADVISORY": "#FFC107",
@@ -123,20 +95,30 @@ class NWSAlert:
     coordinates: List[List[float]] = field(default_factory=list)
     centroid: Optional[Tuple[float, float]] = None
 
+    SEVERITY_COEFFICIENTS = {
+        "Tornado Warning": 1.00,
+        "Severe Thunderstorm Warning": 0.75,
+        "Flash Flood Warning": 0.80,
+        "Hurricane Warning": 0.95,
+        "Winter Storm Warning": 0.55,
+        "Blizzard Warning": 0.70,
+    }
+
     @property
     def severity_coefficient(self) -> float:
-        return SEVERITY_COEFFICIENTS.get(self.event_type, 0.30)
+        return self.SEVERITY_COEFFICIENTS.get(self.event_type, 0.30)
 
 
 @dataclass
 class RiskPoint:
     lat: float
     lon: float
-    distance_to_alert_mi: float
-    risk_score: float
+    elapsed_s: int
+    overall_score: float
     tier: str
-    minute: int
-    alert_event: str
+    alert_message: str
+    recommended_action: str
+    hazard_type: Optional[str]
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +184,7 @@ def fetch_alerts_for_states(states: List[str]) -> List[NWSAlert]:
 
 
 # ---------------------------------------------------------------------------
-# Risk scoring
+# Haversine for local route point generation
 # ---------------------------------------------------------------------------
 
 def haversine_miles(lat1, lon1, lat2, lon2):
@@ -215,90 +197,8 @@ def haversine_miles(lat1, lon1, lat2, lon2):
     return R * 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
 
-def compute_risk_score(distance_mi: float, severity_coeff: float,
-                       exposure_min: float = 0,
-                       nearby_exits: int = 2) -> float:
-    if distance_mi <= 0:
-        proximity = 1.0
-    else:
-        proximity = max(0.0, 1.0 - np.log10(distance_mi + 1) / np.log10(51))
-
-    if distance_mi <= 0:
-        intersection = 1.0
-    else:
-        time_min = distance_mi / 65 * 60
-        if time_min <= 15:
-            intersection = 1.0
-        elif time_min >= 60:
-            intersection = 0.0
-        else:
-            intersection = 1.0 - (time_min - 15) / 45
-
-    exposure = min(1.0, exposure_min / 30.0)
-    escape = max(0.0, 1.0 - nearby_exits * 0.2)
-
-    score = (WEIGHTS["proximity"] * proximity +
-             WEIGHTS["intersection"] * intersection +
-             WEIGHTS["severity"] * severity_coeff +
-             WEIGHTS["exposure"] * exposure +
-             WEIGHTS["escape"] * escape)
-    return min(1.0, score)
-
-
-def score_to_tier(score: float) -> str:
-    if score >= 0.75:
-        return "IMMEDIATE_DANGER"
-    elif score >= 0.50:
-        return "ACTION_REQUIRED"
-    elif score >= 0.25:
-        return "ADVISORY"
-    return "MONITORING"
-
-
 # ---------------------------------------------------------------------------
-# Traveler simulation
-# ---------------------------------------------------------------------------
-
-def simulate_traveler_route(alert: NWSAlert, n_points: int = 20) -> List[RiskPoint]:
-    """Simulate a traveler approaching and passing through an alert area."""
-    if alert.centroid is None:
-        return []
-
-    center_lat, center_lon = alert.centroid
-
-    start_lat = center_lat + 0.6
-    start_lon = center_lon - 0.2
-    end_lat = center_lat - 0.6
-    end_lon = center_lon + 0.2
-
-    risk_points = []
-    for i in range(n_points):
-        t = i / (n_points - 1)
-        lat = start_lat + t * (end_lat - start_lat)
-        lon = start_lon + t * (end_lon - start_lon)
-
-        dist = haversine_miles(lat, lon, center_lat, center_lon)
-        exposure_min = max(0, (n_points / 2 - abs(i - n_points / 2)) * 3)
-
-        risk = compute_risk_score(dist, alert.severity_coefficient,
-                                  exposure_min)
-        tier = score_to_tier(risk)
-
-        rp = RiskPoint(
-            lat=round(lat, 4), lon=round(lon, 4),
-            distance_to_alert_mi=round(dist, 1),
-            risk_score=round(risk, 3),
-            tier=tier,
-            minute=i * 5,
-            alert_event=alert.event_type,
-        )
-        risk_points.append(rp)
-
-    return risk_points
-
-
-# ---------------------------------------------------------------------------
-# Backend integration
+# Backend integration -- all risk scoring via backend
 # ---------------------------------------------------------------------------
 
 def check_backend() -> bool:
@@ -312,34 +212,155 @@ def check_backend() -> bool:
         return False
 
 
-def query_backend_risk(lat: float, lon: float) -> dict | None:
-    """Query backend for traveler risk score."""
+def query_backend_risk(lat: float, lon: float, heading: float = 180.0,
+                       speed_mph: float = 65.0) -> dict | None:
+    """Query backend for traveler risk score via travelerSafety."""
     query = """
-    query Risk($lat: Float!, $lon: Float!) {
-      travelerRiskScore(lat: $lat, lon: $lon, bearing: 180.0, speedMph: 65.0) {
-        riskScore alertTier
+    query Risk($lat: Float!, $lon: Float!, $heading: Float!, $speedMph: Float!) {
+      travelerSafety(lat: $lat, lon: $lon, heading: $heading, speedMph: $speedMph) {
+        overallScore tier recommendedAction alertMessage hazardType
+        hazardSpecificGuidance timeToIntersectionMinutes
       }
     }
     """
     try:
         r = requests.post(BACKEND_URL,
                           json={"query": query,
-                                "variables": {"lat": lat, "lon": lon}},
+                                "variables": {"lat": lat, "lon": lon,
+                                              "heading": heading,
+                                              "speedMph": speed_mph}},
                           timeout=10)
         if r.status_code == 200:
-            return r.json().get("data", {}).get("travelerRiskScore")
+            data = r.json().get("data", {}).get("travelerSafety")
+            return data
     except Exception:
         pass
     return None
+
+
+def simulate_via_backend(alert: NWSAlert, n_points: int = 20) -> List[RiskPoint]:
+    """Run a trip through the backend: startTrip -> N x updatePosition -> endTrip.
+
+    Generates route points approaching alert centroid, uses backend for all
+    risk assessment.
+    """
+    if alert.centroid is None:
+        return []
+
+    center_lat, center_lon = alert.centroid
+    start_lat = center_lat + 0.5
+    start_lon = center_lon - 0.1
+    end_lat = center_lat - 0.5
+    end_lon = center_lon + 0.1
+
+    # Start trip
+    start_mutation = """
+    mutation StartTrip($fromLat: Float!, $fromLon: Float!, $toLat: Float!, $toLon: Float!) {
+      startTrip(fromLat: $fromLat, fromLon: $fromLon, toLat: $toLat, toLon: $toLon) {
+        sessionId route { lat lon } estimatedDistanceMiles estimatedTimeMinutes
+      }
+    }
+    """
+    try:
+        resp = requests.post(BACKEND_URL, json={
+            "query": start_mutation,
+            "variables": {
+                "fromLat": start_lat, "fromLon": start_lon,
+                "toLat": end_lat, "toLon": end_lon,
+            },
+        }, timeout=15)
+        data = resp.json().get("data", {}).get("startTrip", {})
+        session_id = data.get("sessionId")
+        if not session_id:
+            print("  WARNING: startTrip returned no sessionId")
+            return []
+    except Exception as e:
+        print(f"  WARNING: startTrip failed: {e}")
+        return []
+
+    # Update position N times along the route
+    update_mutation = """
+    mutation UpdatePos($sessionId: ID!, $lat: Float!, $lon: Float!, $heading: Float!, $speedMph: Float!) {
+      updatePosition(sessionId: $sessionId, lat: $lat, lon: $lon, heading: $heading, speedMph: $speedMph) {
+        overallScore tier recommendedAction alertMessage hazardType
+      }
+    }
+    """
+    risk_points = []
+    for i in range(n_points):
+        t = i / max(n_points - 1, 1)
+        lat = start_lat + t * (end_lat - start_lat)
+        lon = start_lon + t * (end_lon - start_lon)
+        heading = 180.0  # traveling south
+        speed = 65.0
+        elapsed_s = i * 30  # 30s between updates
+
+        try:
+            resp = requests.post(BACKEND_URL, json={
+                "query": update_mutation,
+                "variables": {
+                    "sessionId": session_id,
+                    "lat": lat, "lon": lon,
+                    "heading": heading, "speedMph": speed,
+                },
+            }, timeout=10)
+            rdata = resp.json().get("data", {}).get("updatePosition", {})
+
+            rp = RiskPoint(
+                lat=round(lat, 4), lon=round(lon, 4),
+                elapsed_s=elapsed_s,
+                overall_score=rdata.get("overallScore", 0.0),
+                tier=rdata.get("tier", "MONITORING"),
+                alert_message=rdata.get("alertMessage", ""),
+                recommended_action=rdata.get("recommendedAction", ""),
+                hazard_type=rdata.get("hazardType"),
+            )
+            risk_points.append(rp)
+        except Exception as e:
+            print(f"  WARNING: updatePosition #{i} failed: {e}")
+
+        time.sleep(0.1)  # small delay between updates
+
+    # End trip
+    end_mutation = """
+    mutation EndTrip($sessionId: ID!) {
+      endTrip(sessionId: $sessionId) {
+        totalDistanceMiles totalTimeMinutes maxRiskScore alertsReceived actionsRecommended
+      }
+    }
+    """
+    trip_summary = None
+    try:
+        resp = requests.post(BACKEND_URL, json={
+            "query": end_mutation,
+            "variables": {"sessionId": session_id},
+        }, timeout=10)
+        trip_summary = resp.json().get("data", {}).get("endTrip")
+    except Exception as e:
+        print(f"  WARNING: endTrip failed: {e}")
+
+    return risk_points, trip_summary
 
 
 # ---------------------------------------------------------------------------
 # Figure generators
 # ---------------------------------------------------------------------------
 
-def fig_alert_summary(alerts: List[NWSAlert], timestamp: str) -> None:
+def fig_alert_summary(alerts: List[NWSAlert], timestamp: str,
+                      alert_count: int) -> None:
     """Summary figure showing alert types and severities."""
     if not alerts:
+        # Generate a "no alerts" figure
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.text(0.5, 0.5, f"No active NWS alerts found\n{timestamp}",
+                ha="center", va="center", fontsize=14, color="#666",
+                transform=ax.transAxes)
+        ax.set_title(f"Live NWS Weather Alerts - {timestamp}")
+        plt.tight_layout()
+        path = os.path.join(FIG_DIR, "live_weather_alerts_map.png")
+        fig.savefig(path, dpi=DPI, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Saved: {path}")
         return
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -354,7 +375,7 @@ def fig_alert_summary(alerts: List[NWSAlert], timestamp: str) -> None:
     ax1.set_yticks(range(top_n))
     ax1.set_yticklabels(unique_types[sorted_idx[:top_n]], fontsize=8)
     ax1.set_xlabel("Count")
-    ax1.set_title(f"Active NWS Alerts ({len(alerts)} total)")
+    ax1.set_title(f"Active NWS Alerts ({alert_count} total)")
     ax1.invert_yaxis()
 
     severities = [a.severity for a in alerts]
@@ -383,90 +404,39 @@ def fig_risk_timeline(risk_points: List[RiskPoint], alert: NWSAlert) -> None:
     if not risk_points:
         return
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7), sharex=True,
-                                    gridspec_kw={"height_ratios": [3, 1]})
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-    minutes = [rp.minute for rp in risk_points]
-    scores = [rp.risk_score for rp in risk_points]
-    distances = [rp.distance_to_alert_mi for rp in risk_points]
+    elapsed = [rp.elapsed_s for rp in risk_points]
+    scores = [rp.overall_score for rp in risk_points]
 
     colors = [TIER_COLORS.get(rp.tier, "#666") for rp in risk_points]
-    ax1.plot(minutes, scores, "k-", lw=1.5, alpha=0.5)
-    ax1.scatter(minutes, scores, c=colors, s=60, zorder=3,
-                edgecolors="white")
+    ax.plot(elapsed, scores, "k-", lw=1.5, alpha=0.5)
+    ax.scatter(elapsed, scores, c=colors, s=60, zorder=3, edgecolors="white")
 
-    ax1.axhspan(0, 0.25, alpha=0.08, color="#4CAF50")
-    ax1.axhspan(0.25, 0.50, alpha=0.08, color="#FFC107")
-    ax1.axhspan(0.50, 0.75, alpha=0.08, color="#FF9800")
-    ax1.axhspan(0.75, 1.0, alpha=0.08, color="#F44336")
+    ax.axhspan(0, 0.25, alpha=0.08, color="#4CAF50")
+    ax.axhspan(0.25, 0.50, alpha=0.08, color="#FFC107")
+    ax.axhspan(0.50, 0.75, alpha=0.08, color="#FF9800")
+    ax.axhspan(0.75, 1.0, alpha=0.08, color="#F44336")
 
     for y, label, color in [(0.125, "MONITORING", "#4CAF50"),
                              (0.375, "ADVISORY", "#FFC107"),
                              (0.625, "ACTION REQ.", "#FF9800"),
                              (0.875, "DANGER", "#F44336")]:
-        ax1.text(max(minutes) + 2, y, label, va="center", fontsize=7,
-                 color=color, fontweight="bold")
+        ax.text(max(elapsed) * 1.02, y, label, va="center", fontsize=7,
+                color=color, fontweight="bold")
 
-    ax1.set_ylabel("Risk Score (R)")
-    ax1.set_ylim(0, 1.05)
-    ax1.set_title(f"WeatherWise Risk Score - Simulated Approach to "
-                  f"{alert.event_type}\n{alert.area_desc[:80]}",
-                  fontsize=11)
-
-    ax2.plot(minutes, distances, "o-", color="#1565C0", lw=1.5, markersize=4)
-    ax2.set_xlabel("Time (minutes)")
-    ax2.set_ylabel("Distance (mi)")
-    ax2.set_title("Distance to Alert Center", fontsize=10)
-    ax2.invert_yaxis()
+    ax.set_xlabel("Elapsed Time (seconds)")
+    ax.set_ylabel("Risk Score (from backend)")
+    ax.set_ylim(0, 1.05)
+    ax.set_title(f"WeatherWise Backend Risk Score - Approach to "
+                 f"{alert.event_type}\n{alert.area_desc[:80]}",
+                 fontsize=11)
 
     plt.tight_layout()
     path = os.path.join(FIG_DIR, "live_risk_timeline.png")
     fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {path}")
-
-
-# ---------------------------------------------------------------------------
-# Simulated alerts fallback
-# ---------------------------------------------------------------------------
-
-def generate_simulated_alerts() -> List[NWSAlert]:
-    """Generate plausible test alerts when NWS returns none."""
-    return [
-        NWSAlert(
-            event_type="Tornado Warning",
-            severity="Extreme",
-            headline="Tornado Warning for Laurel County, KY",
-            description="A severe thunderstorm capable of producing a "
-                        "tornado was located near London, moving northeast.",
-            onset="2025-05-16T14:30:00-04:00",
-            expires="2025-05-16T15:15:00-04:00",
-            area_desc="Laurel County, KY",
-            centroid=(37.13, -84.08),
-        ),
-        NWSAlert(
-            event_type="Severe Thunderstorm Warning",
-            severity="Severe",
-            headline="Severe Thunderstorm Warning for Knox County, KY",
-            description="A severe thunderstorm was located over Barbourville, "
-                        "producing 60 mph winds and quarter-size hail.",
-            onset="2025-05-16T14:00:00-04:00",
-            expires="2025-05-16T15:00:00-04:00",
-            area_desc="Knox County, KY",
-            centroid=(36.87, -83.89),
-        ),
-        NWSAlert(
-            event_type="Flash Flood Warning",
-            severity="Severe",
-            headline="Flash Flood Warning for Whitley County, KY",
-            description="Flash flooding is occurring along Laurel Creek "
-                        "due to excessive rainfall rates of 3 inches per hour.",
-            onset="2025-05-16T13:45:00-04:00",
-            expires="2025-05-16T16:45:00-04:00",
-            area_desc="Whitley County, KY",
-            centroid=(36.77, -84.14),
-        ),
-    ]
 
 
 # ---------------------------------------------------------------------------
@@ -490,121 +460,138 @@ def main():
         print("  Backend not running. Will save NWS alert snapshot only.")
 
     # Fetch live alerts
-    target_states = ["KY", "TN", "NC", "TX", "OK"]
+    target_states = ["KY", "TN", "NC", "TX", "OK", "VA", "GA", "AL", "FL"]
     print(f"\n  Fetching active NWS alerts for: {', '.join(target_states)}")
 
     alerts = fetch_alerts_for_states(target_states)
     print(f"  Found {len(alerts)} active alerts")
 
-    used_simulated = False
     if not alerts:
-        print("  No active alerts found. Using simulated test alerts.")
-        alerts = generate_simulated_alerts()
-        used_simulated = True
+        print("  No active alerts found. This is real data -- no simulated fallback.")
+        print("  (If weather is calm, there may genuinely be zero active alerts.)")
 
     # Print alert summary
-    print(f"\n  {'Event Type':<35s} {'Severity':<12s} {'Area'}")
-    print("  " + "-" * 80)
-    for alert in alerts[:15]:
-        print(f"  {alert.event_type:<35s} {alert.severity:<12s} "
-              f"{alert.area_desc[:40]}")
+    if alerts:
+        print(f"\n  {'Event Type':<35s} {'Severity':<12s} {'Area'}")
+        print("  " + "-" * 80)
+        for alert in alerts[:15]:
+            print(f"  {alert.event_type:<35s} {alert.severity:<12s} "
+                  f"{alert.area_desc[:40]}")
 
     # Find most severe alert for simulation
+    risk_points = []
+    trip_summary = None
+    target_alert = None
+
     severe_alerts = [a for a in alerts if a.severity_coefficient >= 0.60]
-    if not severe_alerts:
+    if not severe_alerts and alerts:
         severe_alerts = alerts[:3]
 
-    target_alert = max(severe_alerts, key=lambda a: a.severity_coefficient)
-    print(f"\n  Simulating traveler approach to: {target_alert.event_type}")
-    print(f"  Area: {target_alert.area_desc}")
-    print(f"  Severity coefficient: {target_alert.severity_coefficient:.2f}")
+    if severe_alerts:
+        target_alert = max(severe_alerts, key=lambda a: a.severity_coefficient)
+        print(f"\n  Target alert for simulation: {target_alert.event_type}")
+        print(f"  Area: {target_alert.area_desc}")
+        print(f"  Severity coefficient: {target_alert.severity_coefficient:.2f}")
 
-    # Simulate traveler route
-    risk_points = simulate_traveler_route(target_alert)
-
-    if risk_points:
-        print(f"\n  {'Min':>5s} {'Distance':>10s} {'Risk':>8s} {'Tier':<20s}")
-        print("  " + "-" * 50)
-        for rp in risk_points:
-            print(f"  {rp.minute:>5d} {rp.distance_to_alert_mi:>9.1f} mi "
-                  f"{rp.risk_score:>7.3f} {rp.tier}")
-
-        max_risk = max(rp.risk_score for rp in risk_points)
-        min_dist = min(rp.distance_to_alert_mi for rp in risk_points)
-        danger_points = [rp for rp in risk_points
-                         if rp.tier == "IMMEDIATE_DANGER"]
-        action_points = [rp for rp in risk_points
-                         if rp.tier in ("ACTION_REQUIRED", "IMMEDIATE_DANGER")]
-
-        first_advisory = next(
-            (rp for rp in risk_points if rp.tier != "MONITORING"), None)
-        advisory_lead_min = (risk_points[-1].minute - first_advisory.minute
-                             if first_advisory else 0)
-
-        print(f"\n  --- Simulation Summary ---")
-        print(f"  Peak risk score:     {max_risk:.3f}")
-        print(f"  Closest approach:    {min_dist:.1f} mi")
-        print(f"  Danger duration:     {len(danger_points) * 5} min")
-        print(f"  Action+ duration:    {len(action_points) * 5} min")
-        print(f"  Advisory lead time:  {advisory_lead_min} min")
-
-    # If backend is running, also query it
-    backend_risk_results = []
-    if backend_ok and risk_points:
-        print("\n  Querying backend for risk scores ...")
-        for rp in risk_points[::4]:  # Every 4th point
-            result = query_backend_risk(rp.lat, rp.lon)
+        if backend_ok and target_alert.centroid:
+            print("\n  Running backend trip simulation (startTrip -> 20x updatePosition -> endTrip) ...")
+            result = simulate_via_backend(target_alert, n_points=20)
             if result:
-                backend_risk_results.append({
-                    "lat": rp.lat, "lon": rp.lon,
-                    "local_risk": rp.risk_score,
-                    "backend_risk": result.get("riskScore"),
-                    "backend_tier": result.get("alertTier"),
-                })
-        if backend_risk_results:
-            print(f"  Got {len(backend_risk_results)} backend risk scores")
+                risk_points, trip_summary = result
+
+                if risk_points:
+                    print(f"\n  {'Elapsed':>8s} {'Score':>8s} {'Tier':<20s} {'Action'}")
+                    print("  " + "-" * 70)
+                    for rp in risk_points:
+                        print(f"  {rp.elapsed_s:>7d}s {rp.overall_score:>7.3f} "
+                              f"{rp.tier:<20s} {rp.recommended_action[:30]}")
+
+                    max_risk = max(rp.overall_score for rp in risk_points)
+                    danger_pts = [rp for rp in risk_points
+                                  if rp.tier == "IMMEDIATE_DANGER"]
+                    action_pts = [rp for rp in risk_points
+                                  if rp.tier in ("ACTION_REQUIRED", "IMMEDIATE_DANGER")]
+                    first_alert = next(
+                        (rp for rp in risk_points if rp.tier != "MONITORING"), None)
+
+                    print(f"\n  --- Backend Simulation Summary ---")
+                    print(f"  Peak risk score:     {max_risk:.3f}")
+                    print(f"  Danger points:       {len(danger_pts)} / {len(risk_points)}")
+                    print(f"  Action+ points:      {len(action_pts)} / {len(risk_points)}")
+                    if first_alert:
+                        print(f"  First alert at:      {first_alert.elapsed_s}s")
+
+                if trip_summary:
+                    print(f"\n  --- Trip Summary (from endTrip) ---")
+                    print(f"  Distance:       {trip_summary.get('totalDistanceMiles', 0):.1f} mi")
+                    print(f"  Time:           {trip_summary.get('totalTimeMinutes', 0):.1f} min")
+                    print(f"  Max risk:       {trip_summary.get('maxRiskScore', 0):.3f}")
+                    print(f"  Alerts:         {trip_summary.get('alertsReceived', 0)}")
+                    print(f"  Actions:        {trip_summary.get('actionsRecommended', [])}")
+        elif backend_ok:
+            print("  Alert has no polygon geometry -- cannot simulate route.")
+        else:
+            print("  Backend not running -- skipping trip simulation.")
+    elif not alerts:
+        # Query backend risk at a few sample points even with no alerts
+        if backend_ok:
+            print("\n  No alerts, but querying backend risk at sample points ...")
+            sample_points = [
+                (37.07, -84.09, "London KY"),
+                (36.16, -86.78, "Nashville TN"),
+                (35.23, -80.84, "Charlotte NC"),
+            ]
+            for lat, lon, name in sample_points:
+                result = query_backend_risk(lat, lon)
+                if result:
+                    print(f"    {name}: score={result.get('overallScore', 0):.3f}, "
+                          f"tier={result.get('tier', '?')}")
 
     # Generate figures
     print("\n  Generating figures ...")
-    fig_alert_summary(alerts, timestamp)
-    if risk_points:
+    fig_alert_summary(alerts, timestamp, len(alerts))
+    if risk_points and target_alert:
         fig_risk_timeline(risk_points, target_alert)
 
     # Save JSON results
     json_results = {
         "timestamp": timestamp,
-        "data_source": "simulated" if used_simulated else "live_nws",
+        "data_source": "live_nws",
         "backend_running": backend_ok,
         "states_queried": target_states,
         "total_alerts": len(alerts),
         "alert_types": {},
-        "target_alert": {
+        "simulation": None,
+    }
+
+    if alerts:
+        event_types = [a.event_type for a in alerts]
+        unique_types, counts = np.unique(event_types, return_counts=True)
+        json_results["alert_types"] = {
+            t: int(c) for t, c in zip(unique_types, counts)
+        }
+
+    if target_alert:
+        json_results["target_alert"] = {
             "event_type": target_alert.event_type,
             "severity": target_alert.severity,
             "area": target_alert.area_desc,
             "severity_coefficient": target_alert.severity_coefficient,
-        },
-        "simulation": {
+        }
+
+    if risk_points:
+        json_results["simulation"] = {
+            "method": "backend (startTrip/updatePosition/endTrip)",
             "points": len(risk_points),
-            "peak_risk": max(rp.risk_score for rp in risk_points) if risk_points else 0,
-            "min_distance_mi": min(rp.distance_to_alert_mi for rp in risk_points) if risk_points else 0,
+            "peak_risk": max(rp.overall_score for rp in risk_points),
             "risk_timeline": [
-                {"minute": rp.minute, "risk": rp.risk_score,
-                 "tier": rp.tier, "distance_mi": rp.distance_to_alert_mi}
+                {"elapsed_s": rp.elapsed_s, "score": rp.overall_score,
+                 "tier": rp.tier, "action": rp.recommended_action}
                 for rp in risk_points
             ],
-        },
-    }
-
-    # Alert type counts
-    event_types = [a.event_type for a in alerts]
-    unique_types, counts = np.unique(event_types, return_counts=True)
-    json_results["alert_types"] = {
-        t: int(c) for t, c in zip(unique_types, counts)
-    }
-
-    if backend_risk_results:
-        json_results["backend_risk_comparison"] = backend_risk_results
+        }
+        if trip_summary:
+            json_results["simulation"]["trip_summary"] = trip_summary
 
     json_path = os.path.join(RESULTS_DIR, "live_weather_results.json")
     with open(json_path, "w") as f:

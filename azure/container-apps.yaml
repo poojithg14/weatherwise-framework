@@ -1,0 +1,192 @@
+# ============================================================================
+# WeatherWise -- Azure Container Apps YAML Manifest
+# ============================================================================
+# Declarative configuration for all WeatherWise services on Azure Container Apps.
+# Use with: az containerapp create --yaml azure/container-apps.yaml
+#
+# Before applying, replace placeholders:
+#   ${ACR_LOGIN_SERVER}  - e.g. weatherwiseacr.azurecr.io
+#   ${DB_URL}            - JDBC connection string for Azure PostgreSQL
+#   ${DB_USERNAME}       - Database username
+#   ${DB_PASSWORD}       - Database password
+#   ${ML_SERVICE_URL}    - Internal FQDN of the ML container app
+# ============================================================================
+
+# --- ML Service ---
+apiVersion: apps/v1
+kind: ContainerApp
+metadata:
+  name: weatherwise-ml
+spec:
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: false
+      targetPort: 5000
+      transport: auto
+    registries:
+      - server: ${ACR_LOGIN_SERVER}
+        username: ${ACR_NAME}
+        passwordSecretRef: acr-password
+    secrets:
+      - name: acr-password
+        value: ${ACR_PASSWORD}
+  template:
+    containers:
+      - name: ml
+        image: ${ACR_LOGIN_SERVER}/weatherwise-ml:latest
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: ML_PORT
+            value: "5000"
+          - name: CORS_ORIGINS
+            value: "*"
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+    scale:
+      minReplicas: 1
+      maxReplicas: 3
+      rules:
+        - name: cpu-scaling
+          custom:
+            type: cpu
+            metadata:
+              type: Utilization
+              value: "70"
+
+---
+# --- Backend Service ---
+apiVersion: apps/v1
+kind: ContainerApp
+metadata:
+  name: weatherwise-backend
+spec:
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 8080
+      transport: auto
+      corsPolicy:
+        allowedOrigins:
+          - "*"
+        allowedMethods:
+          - GET
+          - POST
+          - OPTIONS
+        allowedHeaders:
+          - "*"
+    registries:
+      - server: ${ACR_LOGIN_SERVER}
+        username: ${ACR_NAME}
+        passwordSecretRef: acr-password
+    secrets:
+      - name: acr-password
+        value: ${ACR_PASSWORD}
+      - name: db-password
+        value: ${DB_PASSWORD}
+  template:
+    containers:
+      - name: backend
+        image: ${ACR_LOGIN_SERVER}/weatherwise-backend:latest
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: DB_URL
+            value: ${DB_URL}
+          - name: DB_USERNAME
+            value: ${DB_USERNAME}
+          - name: DB_PASSWORD
+            secretRef: db-password
+          - name: ML_SERVICE_URL
+            value: ${ML_SERVICE_URL}
+          - name: SPRING_PROFILES_ACTIVE
+            value: prod
+          - name: NWS_API_BASE_URL
+            value: https://api.weather.gov
+          - name: OSRM_API_URL
+            value: http://router.project-osrm.org
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+    scale:
+      minReplicas: 1
+      maxReplicas: 5
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "50"
+
+---
+# --- Frontend Service ---
+apiVersion: apps/v1
+kind: ContainerApp
+metadata:
+  name: weatherwise-frontend
+spec:
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 80
+      transport: auto
+    registries:
+      - server: ${ACR_LOGIN_SERVER}
+        username: ${ACR_NAME}
+        passwordSecretRef: acr-password
+    secrets:
+      - name: acr-password
+        value: ${ACR_PASSWORD}
+  template:
+    containers:
+      - name: frontend
+        image: ${ACR_LOGIN_SERVER}/weatherwise-frontend:latest
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+    scale:
+      minReplicas: 1
+      maxReplicas: 3
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "100"

@@ -4,8 +4,9 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isTrip = location.pathname === '/trip';
+  const isSimulate = location.pathname === '/simulate';
 
-  if (isTrip) return null;
+  if (isTrip || isSimulate) return null;
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-[900] bg-ww-surface/95 backdrop-blur-md border-b border-ww-border">
@@ -23,6 +24,12 @@ export default function Navbar() {
         </button>
 
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/simulate')}
+            className="text-gray-400 hover:text-white transition-colors text-sm font-medium"
+          >
+            Simulate
+          </button>
           <a
             href="https://github.com/poojithg14/weatherwise-framework"
             target="_blank"
