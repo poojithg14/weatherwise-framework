@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LocationInput from '../components/LocationInput';
 import { fetchRoutes } from '../utils/routing';
@@ -10,32 +10,6 @@ const DEMO_ROUTES = {
     destination: { lat: 37.1290, lon: -84.0833, label: 'London, KY' },
   },
 };
-
-/* ── Health Dot ── */
-function HealthDot() {
-  const [status, setStatus] = useState('unknown');
-
-  useEffect(() => {
-    let mounted = true;
-    const check = () => {
-      fetch('/actuator/health')
-        .then((r) => { if (mounted) setStatus(r.ok ? 'up' : 'down'); })
-        .catch(() => { if (mounted) setStatus('down'); });
-    };
-    check();
-    const id = setInterval(check, 30000);
-    return () => { mounted = false; clearInterval(id); };
-  }, []);
-
-  if (status === 'unknown') return null;
-  const isUp = status === 'up';
-  return (
-    <div className="flex items-center gap-1.5" title={isUp ? 'Backend connected' : 'Backend offline'}>
-      <div className={`w-2 h-2 rounded-full ${isUp ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-      <span className="text-gray-500 text-xs">{isUp ? 'Live' : 'Offline'}</span>
-    </div>
-  );
-}
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -100,34 +74,6 @@ export default function HomePage() {
             Adapts MIT Lincoln Lab&apos;s Corridor Weather Avoidance Model (CWAM) from aviation
             to highway vehicles — delivering real-time multi-hazard alerting and dynamic rerouting.
           </p>
-        </div>
-
-        {/* ── Stat Badges (research-backed) ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          {[
-            { value: '99.57%', label: 'ML Accuracy', color: 'from-green-500/20 to-emerald-500/20', border: 'border-green-500/30' },
-            { value: '1.97ms', label: 'Mean Latency', color: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-500/30' },
-            { value: '24.8 min', label: 'Lead Time Adv.', color: 'from-purple-500/20 to-violet-500/20', border: 'border-purple-500/30' },
-            { value: '6', label: 'Hazard Types', color: 'from-red-500/20 to-orange-500/20', border: 'border-red-500/30' },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className={`bg-gradient-to-br ${stat.color} border ${stat.border} rounded-xl px-4 py-3 text-center`}
-            >
-              <div className="text-white font-bold text-lg">{stat.value}</div>
-              <div className="text-gray-400 text-xs font-medium">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── National Impact Banner ── */}
-        <div className="flex items-center justify-between bg-ww-surface border border-ww-border rounded-xl px-4 py-3 mb-8">
-          <p className="text-gray-400 text-xs leading-relaxed">
-            Reducing weather-related highway fatalities.{' '}
-            <span className="text-gray-300 font-medium">~6,000 deaths</span> and{' '}
-            <span className="text-gray-300 font-medium">~1.2M crashes</span> annually.
-          </p>
-          <HealthDot />
         </div>
 
         {/* ── Feature Cards ── */}
