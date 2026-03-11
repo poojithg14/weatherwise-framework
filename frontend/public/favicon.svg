@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="cloud" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <!-- Cloud -->
+  <path d="M16 40a8 8 0 018-8h1a12 12 0 0123.6 3A10 10 0 0148 46H24a8 8 0 01-8-6z" fill="url(#cloud)"/>
+  <!-- Shield -->
+  <path d="M32 18l-10 5v9c0 7 4.3 13.5 10 15 5.7-1.5 10-8 10-15v-9l-10-5z" fill="#E65100" opacity="0.95"/>
+  <!-- Checkmark -->
+  <path d="M28 32l3 3 5-6" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
