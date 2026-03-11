@@ -203,12 +203,6 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* ── Reference ── */}
-          <p className="text-center text-gray-500 text-[11px] mt-6 leading-relaxed">
-            Published in <span className="text-gray-400">the journal</span> &mdash;
-            &ldquo;WeatherWise: AI-Enhanced Framework for Real-Time Multi-Hazard
-            Severe Weather Alerting and Dynamic Rerouting for Highway Travelers&rdquo;
-          </p>
         </div>
       </div>
     </div>

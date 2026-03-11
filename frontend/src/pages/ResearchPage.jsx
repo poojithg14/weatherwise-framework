@@ -246,22 +246,7 @@ export default function ResearchPage() {
           </p>
         </section>
 
-        {/* ═══════════════════════════════════════════════════════════════
-            Section F — Publication
-        ═══════════════════════════════════════════════════════════════ */}
-        <section className="text-center pb-8">
-          <SectionHeading title="Publication" subtitle="Peer-reviewed research" />
-          <div className="bg-ww-surface border border-ww-border rounded-xl p-6 max-w-2xl mx-auto">
-            <p className="text-gray-300 text-sm leading-relaxed mb-4">
-              P. Gundeti, &ldquo;WeatherWise: AI-Enhanced Framework for Real-Time Multi-Hazard
-              Severe Weather Alerting and Dynamic Rerouting for Highway Travelers,&rdquo;
-              <span className="italic text-gray-400"> the journal</span>, 2025.
-            </p>
-            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold bg-blue-500/20 border border-blue-500/30 text-blue-300">
-              Published in the journal — Open Access
-            </span>
-          </div>
-        </section>
+        <div className="pb-8" />
 
       </div>
     </div>
