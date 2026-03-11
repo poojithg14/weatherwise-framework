@@ -872,8 +872,8 @@ weatherwise-framework/
 │   ├── figures/                           # All evaluation figures
 │   └── results/                           # JSON results
 │
-└── paper/                                 # LaTeX paper
-    └── weatherwise_paper.tex        # Main paper (916 lines)
+└── paper/                                 # Research paper LaTeX source
+    └── weatherwise.tex                    # Main paper
 ```
 
 ---

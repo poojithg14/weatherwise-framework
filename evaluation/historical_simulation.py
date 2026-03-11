@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WeatherWise Evaluation Suite -- Historical Event Simulation
+WeatherWise -- Historical Event Simulation
 ==============================================================
 Conservative lead-time analysis for 5 historical severe weather events.
 
@@ -59,7 +59,7 @@ DPI = 300
 BACKEND_URL = "http://localhost:8080/graphql"
 
 # ---------------------------------------------------------------------------
-# clean plot style
+# Clean style
 # ---------------------------------------------------------------------------
 plt.rcParams.update({
     "font.family": "sans-serif",
@@ -712,7 +712,7 @@ def fig_methodology_transparency(events: List[HistoricalEvent],
 def main():
     print("\n" + "=" * 72)
     print("  WeatherWise -- Historical Event Simulation")
-    print("  Evaluation Report,Section V: Evaluation")
+    print("  WeatherWise: Historical Event Evaluation")
     print("=" * 72)
 
     print("\n  METHODOLOGY DISCLAIMER:")

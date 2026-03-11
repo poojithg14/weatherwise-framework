@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WeatherWise Evaluation Suite -- Live NWS Weather Integration Test
+WeatherWise -- Live NWS Weather Integration Test
 ===================================================================
 Queries the live NWS (National Weather Service) API to find active
 weather alerts, then drives a traveler through the alert area using
@@ -57,7 +57,7 @@ NWS_HEADERS = {
 }
 BACKEND_URL = "http://localhost:8080/graphql"
 
-# clean plot style
+# Clean style
 plt.rcParams.update({
     "font.family": "sans-serif",
     "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
@@ -446,7 +446,7 @@ def fig_risk_timeline(risk_points: List[RiskPoint], alert: NWSAlert) -> None:
 def main():
     print("\n" + "=" * 72)
     print("  WeatherWise -- Live NWS Weather Integration Test")
-    print("  Evaluation Report,Section V-D: Real-Time Data Integration")
+    print("  WeatherWise: Real-Time Data Integration Test")
     print("=" * 72)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

@@ -3,14 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import LocationInput from '../components/LocationInput';
 import { fetchRoutes } from '../utils/routing';
 
-/* ── Demo route presets ── */
-const DEMO_ROUTES = {
-  louisville: {
-    origin: { lat: 38.2527, lon: -85.7585, label: 'Louisville, KY' },
-    destination: { lat: 37.1290, lon: -84.0833, label: 'London, KY' },
-  },
-};
-
 export default function HomePage() {
   const navigate = useNavigate();
   const [origin, setOrigin] = useState(null);
@@ -47,14 +39,6 @@ export default function HomePage() {
     navigate('/trip', {
       state: { origin, destination, preloadedRoute: routes[selectedRouteIdx] },
     });
-  };
-
-  const handleTryDemo = () => {
-    const demo = DEMO_ROUTES.louisville;
-    setOrigin(demo.origin);
-    setDestination(demo.destination);
-    setRoutes([]);
-    setError(null);
   };
 
   return (
@@ -183,12 +167,6 @@ export default function HomePage() {
 
           {/* ── Quick Actions ── */}
           <div className="flex flex-col sm:flex-row gap-3 mt-4">
-            <button
-              onClick={handleTryDemo}
-              className="flex-1 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-600 hover:to-orange-600 text-white transition-all active:scale-[0.98]"
-            >
-              Try Demo: Louisville Tornado Corridor
-            </button>
             <button
               onClick={() => navigate('/research')}
               className="flex-1 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-purple-600/80 to-violet-600/80 hover:from-purple-600 hover:to-violet-600 text-white transition-all active:scale-[0.98]"

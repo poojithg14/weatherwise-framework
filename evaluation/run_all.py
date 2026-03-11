@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-WeatherWise Evaluation Suite -- Master Evaluation Runner
+WeatherWise -- Master Evaluation Runner
 ===========================================================
 Runs all evaluation components in sequence and generates a combined
-summary report for the paper.
+summary report.
 
 Components:
   1. ML Model Training (pre-event features)
@@ -94,7 +94,7 @@ def main():
 
     print("\n" + "=" * 72)
     print("  WeatherWise -- Master Evaluation Runner")
-    print("  Evaluation Suite: Complete Evaluation Suite")
+    print("  WeatherWise: Complete Evaluation Suite")
     print(f"  Timestamp: {timestamp}")
     if skip_ml:
         print("  Mode: --skip-ml (using existing model)")

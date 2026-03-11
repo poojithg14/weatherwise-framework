@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-WeatherWise Evaluation Suite -- Design Figures Generator
+WeatherWise -- Design Figures Generator
 ==========================================================
-Generates 7 design/diagram figures for the Research paper at 300 DPI.
+Generates 7 design/diagram figures at 300 DPI.
 These are conceptual/architectural figures, not data-driven plots.
 
 Figures:
@@ -37,7 +37,7 @@ os.makedirs(FIG_DIR, exist_ok=True)
 
 DPI = 300
 
-# clean plot style
+# Clean style
 plt.rcParams.update({
     "font.family": "sans-serif",
     "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
@@ -548,7 +548,7 @@ def fig_evaluation_methodology():
 def main():
     print("\n" + "=" * 72)
     print("  WeatherWise -- Paper Design Figures Generator")
-    print("  Evaluation Suite: 7 Design Figures at 300 DPI")
+    print("  WeatherWise: 7 Design Figures at 300 DPI")
     print("=" * 72)
 
     generators = [

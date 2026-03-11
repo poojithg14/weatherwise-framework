@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WeatherWise Evaluation Suite -- Real GraphQL Benchmark
+WeatherWise -- Real GraphQL Benchmark
 ========================================================
 Performs HTTP benchmarking against the WeatherWise backend GraphQL endpoint.
 Uses ONLY the requests library (no aiohttp). Concurrency via ThreadPoolExecutor.
@@ -148,7 +148,7 @@ SEPARATE_QUERIES = [
 ]
 
 # ---------------------------------------------------------------------------
-# clean plot style
+# Clean style
 # ---------------------------------------------------------------------------
 plt.rcParams.update({
     "font.family": "sans-serif",
@@ -605,7 +605,7 @@ def fig_summary(combined: BenchmarkResult, separate: BenchmarkResult,
 def main():
     print("\n" + "=" * 72)
     print("  WeatherWise -- GraphQL Benchmark")
-    print("  Evaluation Report,Section V-C: Performance Evaluation")
+    print("  WeatherWise: Performance Evaluation")
     print("=" * 72)
 
     # Check backend

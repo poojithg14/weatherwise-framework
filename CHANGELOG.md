@@ -31,6 +31,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - 24.8 min mean lead time advantage over NWS public alerts
 
 ### Documentation
-- Research paper: "WeatherWise: AI-Enhanced Framework for Real-Time Multi-Hazard Severe Weather Alerting and Dynamic Rerouting for Highway Travelers"
 - Comprehensive technical documentation (DOCUMENTATION.md)
 - Evaluation results with paper-quality figures (300 DPI)
