@@ -19,7 +19,7 @@ function formatElapsed(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export default function TravelerListPanel({ travelers, completedCount, onPause, onResume, onRemove, onFocus }) {
+export default function TravelerListPanel({ travelers, completedCount, onPause, onResume, onRemove, onFocus, focusedTravelerId }) {
   // Sort by risk score descending (highest risk on top)
   const sorted = [...travelers].sort((a, b) => {
     const aScore = a.riskData?.riskScore ?? -1;
@@ -60,7 +60,7 @@ export default function TravelerListPanel({ travelers, completedCount, onPause, 
           const alert = t.riskData?.alertMessage;
 
           return (
-            <div key={t.id} className="px-4 py-3 hover:bg-ww-dark/50 transition-colors">
+            <div key={t.id} className={`px-4 py-3 hover:bg-ww-dark/50 transition-all duration-300 ${focusedTravelerId === t.id ? 'ring-2 ring-blue-400/70 bg-blue-500/10 shadow-[0_0_12px_rgba(59,130,246,0.3)]' : ''}`}>
               {/* Name + status row */}
               <div className="flex items-center justify-between mb-1">
                 <button

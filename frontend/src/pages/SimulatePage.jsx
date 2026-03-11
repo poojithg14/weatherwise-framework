@@ -11,6 +11,7 @@ import {
 import L from 'leaflet';
 import useSimulationEngine, { TIER_COLORS } from '../hooks/useSimulationEngine';
 import { useAudioAlerts } from '../hooks/useAudioAlerts';
+import useSimSounds from '../hooks/useSimSounds';
 import SimulationSetupPanel from '../components/simulation/SimulationSetupPanel';
 import TravelerListPanel from '../components/simulation/TravelerListPanel';
 import SimulationControls from '../components/simulation/SimulationControls';
@@ -25,12 +26,15 @@ const DARK_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright"
 const TIER_PRIORITY = { MONITORING: 0, ADVISORY: 1, ACTION_REQUIRED: 2, IMMEDIATE_DANGER: 3 };
 
 /* ── Traveler arrow icon factory ── */
-function createTravelerIcon(heading, color) {
+function createTravelerIcon(heading, color, isFocused = false) {
+  const pulseSize = isFocused ? 24 : 16;
+  const pulseOpacity = isFocused ? 0.5 : 0.3;
+  const pulseAnim = isFocused ? 'focusPulse 1.5s ease-out infinite' : 'travelerPulse 2s ease-out infinite';
   return L.divIcon({
     className: '',
     html: `
       <div style="position: relative; width: 32px; height: 32px;">
-        <div style="position: absolute; top: 8px; left: 8px; width: 16px; height: 16px; border-radius: 50%; background: ${color}; opacity: 0.3; animation: travelerPulse 2s ease-out infinite;"></div>
+        <div style="position: absolute; top: ${(32 - pulseSize) / 2}px; left: ${(32 - pulseSize) / 2}px; width: ${pulseSize}px; height: ${pulseSize}px; border-radius: 50%; background: ${color}; opacity: ${pulseOpacity}; animation: ${pulseAnim};"></div>
         <svg width="32" height="32" viewBox="0 0 40 40" style="transform: rotate(${heading || 0}deg); transform-origin: center;">
           <polygon points="20,4 32,36 20,28 8,36" fill="${color}" stroke="#000" stroke-width="1.5"/>
         </svg>
@@ -41,14 +45,14 @@ function createTravelerIcon(heading, color) {
   });
 }
 
-/* ── Map panner ── */
-function MapPanner({ target }) {
+/* ── Map flyer (flyTo instead of panTo for smooth zoom) ── */
+function MapFlyer({ target }) {
   const map = useMap();
   const prevRef = useRef(null);
 
   if (target && (prevRef.current !== target)) {
     prevRef.current = target;
-    map.panTo([target.lat, target.lon], { animate: true, duration: 0.5 });
+    map.flyTo([target.lat, target.lon], 11, { animate: true, duration: 1.2 });
   }
 
   return null;
@@ -60,6 +64,38 @@ const ROUTE_COLORS = [
   '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#06B6D4',
 ];
 
+/* ── Focus toast component ── */
+function FocusToast({ traveler, onDone }) {
+  useEffect(() => {
+    const timer = setTimeout(onDone, 3000);
+    return () => clearTimeout(timer);
+  }, [onDone]);
+
+  if (!traveler) return null;
+  const tier = traveler.riskData?.tier || 'MONITORING';
+  const tierColor = TIER_COLORS[tier];
+
+  return (
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[850] animate-fadeInUp">
+      <div className="bg-ww-surface/95 backdrop-blur-md border border-ww-border rounded-xl px-5 py-3 shadow-2xl shadow-black/40 min-w-[260px]">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: tierColor }} />
+          <span className="text-white font-semibold text-sm">{traveler.name}</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded ml-auto" style={{ backgroundColor: tierColor + '30', color: tierColor }}>
+            {tier.replace('_', ' ')}
+          </span>
+        </div>
+        {traveler.riskData?.hazardType && (
+          <p className="text-xs font-medium" style={{ color: tierColor }}>{traveler.riskData.hazardType}</p>
+        )}
+        {traveler.riskData?.alertMessage && (
+          <p className="text-[11px] text-gray-400 mt-1 leading-snug">{traveler.riskData.alertMessage}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SimulatePage() {
   const {
     travelers, completedTrips, nwsAlerts, stats, autoMode, setAutoMode,
@@ -69,11 +105,34 @@ export default function SimulatePage() {
   } = useSimulationEngine();
 
   const { playAlert, stopAlerts } = useAudioAlerts();
+  const { playFocusPing, playTripStarted, playTripCompleted, playNwsScan } = useSimSounds();
   const playAlertRef = useRef(playAlert);
   useEffect(() => { playAlertRef.current = playAlert; }, [playAlert]);
 
   const [setupCollapsed, setSetupCollapsed] = useState(false);
   const [focusTarget, setFocusTarget] = useState(null);
+  const [focusedTravelerId, setFocusedTravelerId] = useState(null);
+  const [toastTraveler, setToastTraveler] = useState(null);
+
+  // Track traveler count and completed count for sound effects
+  const prevTravelerCountRef = useRef(0);
+  const prevCompletedCountRef = useRef(0);
+
+  useEffect(() => {
+    const currentCount = travelers.length;
+    if (currentCount > prevTravelerCountRef.current && prevTravelerCountRef.current > 0) {
+      playTripStarted();
+    }
+    prevTravelerCountRef.current = currentCount;
+  }, [travelers.length, playTripStarted]);
+
+  useEffect(() => {
+    const currentCompleted = completedTrips.length;
+    if (currentCompleted > prevCompletedCountRef.current && prevCompletedCountRef.current > 0) {
+      playTripCompleted();
+    }
+    prevCompletedCountRef.current = currentCompleted;
+  }, [completedTrips.length, playTripCompleted]);
 
   // Find highest-risk traveler for alert banner + danger overlay
   const highestRiskTraveler = useMemo(() => {
@@ -119,8 +178,21 @@ export default function SimulatePage() {
   const handleFocus = useCallback((traveler) => {
     if (traveler.position) {
       setFocusTarget({ ...traveler.position, _ts: Date.now() });
+      setFocusedTravelerId(traveler.id);
+      setToastTraveler(traveler);
+      playFocusPing();
+
+      // If focused traveler is in danger, play the tier-appropriate alert
+      const tier = traveler.riskData?.tier;
+      if (tier === 'ACTION_REQUIRED' || tier === 'IMMEDIATE_DANGER') {
+        const msg = traveler.riskData?.alertMessage;
+        playAlertRef.current(tier, `${traveler.name}: ${msg || 'Weather hazard detected'}`);
+      }
+
+      // Clear focused highlight after 2s
+      setTimeout(() => setFocusedTravelerId(null), 2000);
     }
-  }, []);
+  }, [playFocusPing]);
 
   const handleEndAll = useCallback(async () => {
     stopAlerts();
@@ -130,6 +202,11 @@ export default function SimulatePage() {
   const handleToggleAuto = useCallback(() => {
     setAutoMode(prev => !prev);
   }, [setAutoMode]);
+
+  const handleScanNws = useCallback(() => {
+    playNwsScan();
+    scanNws();
+  }, [scanNws, playNwsScan]);
 
   // Gather all storm cells from all travelers' risk data
   const allStormCells = useMemo(() => {
@@ -162,7 +239,7 @@ export default function SimulatePage() {
         >
           <TileLayer url={DARK_TILE_URL} attribution={DARK_TILE_ATTR} />
           <ScaleControl position="bottomleft" imperial={true} metric={false} />
-          <MapPanner target={focusTarget} />
+          <MapFlyer target={focusTarget} />
 
           {/* Storm cells from NWS data */}
           <StormCellLayer stormCells={allStormCells} />
@@ -195,7 +272,8 @@ export default function SimulatePage() {
             if (!t.position) return null;
             const tier = t.riskData?.tier || 'MONITORING';
             const color = TIER_COLORS[tier] || TIER_COLORS.MONITORING;
-            const icon = createTravelerIcon(t.heading, color);
+            const isFocused = t.id === focusedTravelerId;
+            const icon = createTravelerIcon(t.heading, color, isFocused);
             return (
               <Marker
                 key={`traveler-${t.id}`}
@@ -232,6 +310,21 @@ export default function SimulatePage() {
         </MapContainer>
       </div>
 
+      {/* Framework watermark */}
+      <div className="absolute bottom-3 right-3 z-[500] pointer-events-none select-none">
+        <span className="text-[11px] text-gray-500/60 font-mono tracking-wide">
+          WeatherWise Framework v1.0
+        </span>
+      </div>
+
+      {/* Focus toast */}
+      {toastTraveler && (
+        <FocusToast
+          traveler={toastTraveler}
+          onDone={() => setToastTraveler(null)}
+        />
+      )}
+
       {/* Top controls bar */}
       <SimulationControls
         travelers={travelers}
@@ -262,7 +355,7 @@ export default function SimulatePage() {
         onToggle={() => setSetupCollapsed(prev => !prev)}
         autoMode={autoMode}
         onToggleAuto={handleToggleAuto}
-        onScanNws={scanNws}
+        onScanNws={handleScanNws}
         nwsAlertCount={nwsAlerts.length}
         activeTravelers={travelers}
       />
@@ -275,6 +368,7 @@ export default function SimulatePage() {
         onResume={resumeTraveler}
         onRemove={removeTraveler}
         onFocus={handleFocus}
+        focusedTravelerId={focusedTravelerId}
       />
     </div>
   );
