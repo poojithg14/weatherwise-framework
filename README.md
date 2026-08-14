@@ -169,6 +169,16 @@ The mock data simulates a tornado event near Louisville, KY on I-64. A tornado-w
 3. Escalating alert tiers as the tornado approaches
 4. Specific safe shelter recommendations along the corridor
 
+## Disclaimer
+
+WeatherWise is a research project provided for informational purposes only.
+It is **not** a substitute for official warnings from the National Weather
+Service or directions from local authorities. Weather data, risk scores, and
+route recommendations may be incomplete, delayed, or wrong — never rely on
+this software for life-safety decisions, and never interact with it while
+driving. Map data © OpenStreetMap contributors; weather data courtesy of
+NOAA/NWS (this project is not affiliated with or endorsed by NOAA).
+
 ## License
 
-No license has been selected yet; all rights reserved until one is added.
+Apache License 2.0 — see [LICENSE](LICENSE).
