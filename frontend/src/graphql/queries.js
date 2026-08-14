@@ -21,10 +21,6 @@ export const UPDATE_POSITION = gql`
       hazardSpecificGuidance
       timeToIntersectionMinutes
       hazardType
-      hazards { type severity distanceMiles direction etaMinutes }
-      nearestShelters { name type distanceMiles hasIndoorShelter exitNumber }
-      alternateRoute { waypoints { lat lon } distanceMiles timeMinutes safetyScore }
-      countdown { minutesUntilIntersection message }
     }
   }
 `;

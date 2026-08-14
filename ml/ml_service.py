@@ -196,12 +196,14 @@ def estimate_severity(hazard_type, rotation=0, vil=0, magnitude=0):
 
 @app.route("/health", methods=["GET"])
 def health():
+    # Report degraded (503) when the model is unusable so callers never
+    # treat a dead predictor as available.
     return jsonify({
-        "status": "ok",
+        "status": "ok" if model_loaded else "degraded",
         "model_loaded": model_loaded,
         "features": len(feature_names) if feature_names else 0,
         "classes": class_names or CATEGORIES_DEFAULT,
-    })
+    }), (200 if model_loaded else 503)
 
 
 @app.route("/predict", methods=["POST"])

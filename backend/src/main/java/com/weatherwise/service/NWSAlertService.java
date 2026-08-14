@@ -2,13 +2,16 @@ package com.weatherwise.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weatherwise.entity.TravelerSessionEntity;
 import com.weatherwise.entity.WeatherAlertEntity;
 import com.weatherwise.model.HazardType;
+import com.weatherwise.repository.TravelerSessionRepository;
 import com.weatherwise.repository.WeatherAlertRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.locationtech.jts.geom.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -36,28 +39,81 @@ public class NWSAlertService {
 
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
+    private final TravelerSessionRepository sessionRepository;
+
     public NWSAlertService(RestTemplate restTemplate, ObjectMapper objectMapper,
-                           WeatherAlertRepository alertRepository) {
+                           WeatherAlertRepository alertRepository,
+                           TravelerSessionRepository sessionRepository) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.alertRepository = alertRepository;
+        this.sessionRepository = sessionRepository;
     }
 
     public List<WeatherAlertEntity> getActiveAlerts(double lat, double lon, double radiusMiles) {
+        maybeRefresh(lat, lon);
+        double radiusMeters = radiusMiles * 1609.344;
+        return alertRepository.findActiveAlertsWithinRadius(lat, lon, radiusMeters);
+    }
+
+    /** Fetch from NWS at most once per TTL per grid cell, persisting what comes back. */
+    private void maybeRefresh(double lat, double lon) {
         String cacheKey = String.format("%.2f,%.2f", lat, lon);
         CacheEntry cached = cache.get(cacheKey);
         if (cached != null && System.currentTimeMillis() - cached.timestamp < CACHE_TTL_MS) {
-            return cached.alerts;
+            return;
         }
-
         try {
             List<WeatherAlertEntity> fetched = fetchFromNWS(lat, lon);
+            persist(fetched);
             cache.put(cacheKey, new CacheEntry(fetched, System.currentTimeMillis()));
-            return fetched;
         } catch (Exception e) {
-            log.warn("NWS API failed, returning cached/DB alerts: {}", e.getMessage());
-            double radiusMeters = radiusMiles * 1609.344;
-            return alertRepository.findActiveAlertsWithinRadius(lat, lon, radiusMeters);
+            log.warn("NWS refresh failed, serving persisted alerts: {}", e.getMessage());
+        }
+    }
+
+    /** Upsert by NWS alert id so repeated polls never duplicate rows. */
+    private void persist(List<WeatherAlertEntity> fetched) {
+        for (WeatherAlertEntity alert : fetched) {
+            try {
+                alertRepository.findByAlertId(alert.getAlertId()).ifPresentOrElse(existing -> {
+                    existing.setSeverity(alert.getSeverity());
+                    existing.setPolygon(alert.getPolygon());
+                    existing.setEffectiveTime(alert.getEffectiveTime());
+                    existing.setExpirationTime(alert.getExpirationTime());
+                    existing.setActive(true);
+                    alertRepository.save(existing);
+                }, () -> alertRepository.save(alert));
+            } catch (Exception e) {
+                log.debug("Failed to persist alert {}: {}", alert.getAlertId(), e.getMessage());
+            }
+        }
+    }
+
+    /** Keep alerts fresh for every active trip and retire expired ones. */
+    @Scheduled(fixedDelayString = "${nws.poll-interval-ms:60000}")
+    public void refreshActiveRegions() {
+        try {
+            for (TravelerSessionEntity session : sessionRepository.findByActiveTrue()) {
+                Point location = session.getLastKnownLocation();
+                if (location != null) {
+                    maybeRefresh(location.getY(), location.getX());
+                }
+            }
+            Instant now = Instant.now();
+            List<WeatherAlertEntity> stale = new ArrayList<>();
+            for (WeatherAlertEntity alert : alertRepository.findByActiveTrue()) {
+                if (alert.getExpirationTime() != null && alert.getExpirationTime().isBefore(now)) {
+                    alert.setActive(false);
+                    stale.add(alert);
+                }
+            }
+            if (!stale.isEmpty()) {
+                alertRepository.saveAll(stale);
+                log.info("Deactivated {} expired NWS alerts", stale.size());
+            }
+        } catch (Exception e) {
+            log.warn("Scheduled NWS refresh failed: {}", e.getMessage());
         }
     }
 

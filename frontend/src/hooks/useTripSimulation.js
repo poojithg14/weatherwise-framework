@@ -53,7 +53,6 @@ export function useTripSimulation(routeWaypoints, scenarioTimeline, isDemo) {
     cumulativeDistances.current = dists;
     setCurrentPosition({ ...routeWaypoints[0] });
     prevPosRef.current = routeWaypoints[0];
-    console.log('Route loaded:', routeWaypoints.length, 'waypoints,', dists[dists.length - 1].toFixed(1), 'miles total');
   }, [routeWaypoints]);
 
   // Interpolate position at target distance along route
@@ -122,7 +121,6 @@ export function useTripSimulation(routeWaypoints, scenarioTimeline, isDemo) {
       if (distanceTraveled >= totalDistance) {
         clearInterval(intervalRef.current);
         setIsSimulationRunning(false);
-        console.log('SIMULATION COMPLETE - reached destination');
         return;
       }
 
@@ -136,7 +134,6 @@ export function useTripSimulation(routeWaypoints, scenarioTimeline, isDemo) {
         prevPosRef.current = newPos;
         setCurrentPosition({ ...newPos }); // spread forces re-render
         setCurrentWaypointIndex(waypointIndexAtDistance(distanceTraveled));
-        console.log(`Min ${minutes}: pos=(${newPos.lat.toFixed(4)}, ${newPos.lon.toFixed(4)}), dist=${distanceTraveled.toFixed(1)}mi`);
       }
 
       // Check scenario timeline
@@ -149,7 +146,6 @@ export function useTripSimulation(routeWaypoints, scenarioTimeline, isDemo) {
           }
         }
         if (activeEvent) {
-          console.log(`Min ${minutes}: EVENT tier=${activeEvent.tier} risk=${activeEvent.riskScore}`);
           const raw = activeEvent.riskScore ?? 5;
           setRiskScore(raw > 1 ? raw / 100 : raw);
           setAlertTier(activeEvent.tier ?? 'MONITORING');
@@ -171,10 +167,8 @@ export function useTripSimulation(routeWaypoints, scenarioTimeline, isDemo) {
       }
     }, 1000); // 1 second = 1 minute of travel
 
-    console.log('DEMO SIMULATION STARTED');
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      console.log('DEMO SIMULATION CLEANUP');
     };
   }, [isDemo, routeWaypoints, scenarioTimeline]);
 

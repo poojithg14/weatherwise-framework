@@ -25,17 +25,30 @@ public class TripSessionService {
     private final RiskScoringService riskScoringService;
     private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
+    private final RiskLogBuffer riskLogBuffer;
+
     public TripSessionService(TravelerSessionRepository sessionRepository,
                               RiskAssessmentLogRepository riskLogRepository,
                               RouteService routeService,
-                              RiskScoringService riskScoringService) {
+                              RiskScoringService riskScoringService,
+                              RiskLogBuffer riskLogBuffer) {
         this.sessionRepository = sessionRepository;
         this.riskLogRepository = riskLogRepository;
+        this.riskLogBuffer = riskLogBuffer;
         this.routeService = routeService;
         this.riskScoringService = riskScoringService;
     }
 
+    private static void validateCoordinates(double lat, double lon) {
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+            throw new IllegalArgumentException(
+                    "Coordinates out of range: lat=" + lat + ", lon=" + lon);
+        }
+    }
+
     public TripResult startTrip(double fromLat, double fromLon, double toLat, double toLon) {
+        validateCoordinates(fromLat, fromLon);
+        validateCoordinates(toLat, toLon);
         // Create session
         TravelerSessionEntity session = TravelerSessionEntity.builder()
                 .sessionToken(UUID.randomUUID().toString())
@@ -61,6 +74,7 @@ public class TripSessionService {
 
     public RiskAssessment updatePosition(String sessionId, double lat, double lon,
                                          double heading, double speedMph) {
+        validateCoordinates(lat, lon);
         TravelerSessionEntity session = sessionRepository.findById(UUID.fromString(sessionId))
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
 
@@ -80,6 +94,9 @@ public class TripSessionService {
 
         session.setActive(false);
         sessionRepository.save(session);
+
+        // Drain any buffered assessments so the summary sees the full trip
+        riskLogBuffer.flush();
 
         List<RiskAssessmentLogEntity> logs = riskLogRepository
                 .findByTravelerSessionIdOrderByComputedAtDesc(session.getId());

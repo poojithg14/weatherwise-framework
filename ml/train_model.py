@@ -4,18 +4,17 @@ WeatherWise - Multi-Hazard Classification Pipeline
 Trains a hazard classifier using ONLY pre-event features.
 No post-event data leakage (no deaths, injuries, damage, tor_scale).
 
-Features (20):
+Features (13):
   Temporal:   month_sin, month_cos, hour_sin, hour_cos, is_nighttime, season
   Geographic: latitude, longitude, lat_lon_interaction, lat_squared,
               lon_squared, state_encoded
   Radar:      magnitude (real-time Doppler)
-  Synthetic:  cape, wind_shear, vil, rotation, echo_top,
-              surface_pressure, dewpoint_depression
 
 Usage:  python train_model.py
 """
 
 import os
+import sys
 import json
 import warnings
 import numpy as np
@@ -110,59 +109,6 @@ CATEGORIES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Radar-proxy distributions per hazard class
-# ---------------------------------------------------------------------------
-RADAR_PARAMS = {
-    #                   cape     shear    vil      rotation echo_top  pressure dewpt_dep
-    "TORNADO":             (3500, 800, 55, 15, 50, 15, 0.70, 0.15, 45000, 8000, 1000, 8, 3, 2),
-    "SEVERE_THUNDERSTORM": (2500, 700, 40, 12, 35, 12, 0.30, 0.15, 38000, 7000, 1005, 7, 5, 3),
-    "FLASH_FLOOD":         (2000, 600, 20, 10, 45, 12, 0.15, 0.10, 35000, 6000, 1008, 6, 2, 1.5),
-    "WINTER_STORM":        (200, 150, 35, 10, 15, 8, 0.05, 0.05, 25000, 5000, 995, 10, 8, 4),
-    "HURRICANE":           (2800, 600, 15, 8, 40, 10, 0.50, 0.20, 50000, 8000, 980, 15, 2, 1),
-    "WILDFIRE":            (500, 300, 25, 10, 5, 5, 0.05, 0.05, 15000, 5000, 1015, 5, 15, 5),
-}
-
-PHYSICAL_RANGES = {
-    "cape": (0, 7000),
-    "wind_shear": (0, 120),
-    "vil": (0, 80),
-    "rotation": (0, 1.0),
-    "echo_top": (3000, 65000),
-    "surface_pressure": (920, 1060),
-    "dewpoint_depression": (0, 30),
-}
-
-
-def generate_radar_features(hazard_classes, rng):
-    n = len(hazard_classes)
-    cols = {k: np.zeros(n) for k in PHYSICAL_RANGES}
-
-    for cls, params in RADAR_PARAMS.items():
-        mask = hazard_classes == cls
-        count = mask.sum()
-        if count == 0:
-            continue
-        cm, cs, sm, ss, vm, vs, rm, rs, em, es, pm, ps, dm, ds = params
-
-        raw = {
-            "cape": rng.normal(cm, cs, count),
-            "wind_shear": rng.normal(sm, ss, count),
-            "vil": rng.normal(vm, vs, count),
-            "rotation": rng.normal(rm, rs, count),
-            "echo_top": rng.normal(em, es, count),
-            "surface_pressure": rng.normal(pm, ps, count),
-            "dewpoint_depression": rng.normal(dm, ds, count),
-        }
-
-        for feat_name, values in raw.items():
-            lo, hi = PHYSICAL_RANGES[feat_name]
-            noise = 1.0 + rng.normal(0, 0.10, count)
-            cols[feat_name][mask] = np.clip(values * noise, lo, hi)
-
-    return cols
-
-
-# ---------------------------------------------------------------------------
 # Feature engineering
 # ---------------------------------------------------------------------------
 
@@ -202,11 +148,6 @@ def extract_features(df, rng, state_encoder=None, fit_state=False):
 
     # Magnitude (real-time Doppler, NOT post-event)
     feat["magnitude"] = df["MAGNITUDE"].fillna(0).astype(float)
-
-    # Radar-proxy features
-    radar = generate_radar_features(df["hazard_class"].values, rng)
-    for col_name, values in radar.items():
-        feat[col_name] = values
 
     return feat, state_encoder
 
@@ -436,7 +377,8 @@ def main():
     print("\n[1/9] Loading data ...")
     if not os.path.exists(DATA_PATH):
         print(f"  ERROR: {DATA_PATH} not found")
-        return
+        print("  Run download_noaa_data.py first.")
+        sys.exit(1)
     df = pd.read_csv(DATA_PATH, low_memory=False)
     print(f"  Loaded {len(df):,} records")
 

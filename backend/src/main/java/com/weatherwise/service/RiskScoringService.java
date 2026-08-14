@@ -7,12 +7,15 @@ import com.weatherwise.entity.RiskAssessmentLogEntity;
 import com.weatherwise.entity.SafeLocationEntity;
 import com.weatherwise.entity.StormCellEntity;
 import com.weatherwise.entity.TravelerSessionEntity;
+import com.weatherwise.entity.WeatherAlertEntity;
 import com.weatherwise.model.*;
-import com.weatherwise.repository.RiskAssessmentLogRepository;
 import com.weatherwise.repository.SafeLocationRepository;
 import com.weatherwise.repository.StormCellRepository;
 import com.weatherwise.resolver.StormCellResolver;
 import lombok.extern.slf4j.Slf4j;
+import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -30,16 +33,17 @@ public class RiskScoringService {
     private final SafeRouteOptimizer routeOptimizer;
     private final StormCellRepository stormCellRepository;
     private final SafeLocationRepository safeLocationRepository;
-    private final RiskAssessmentLogRepository riskLogRepository;
+    private final RiskLogBuffer riskLogBuffer;
     private final StormCellResolver stormCellResolver;
     private final NWSAlertService nwsAlertService;
     private final MLPredictionService mlPredictionService;
+    private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
     public RiskScoringService(TravelerRiskScorer riskScorer,
                               SafeRouteOptimizer routeOptimizer,
                               StormCellRepository stormCellRepository,
                               SafeLocationRepository safeLocationRepository,
-                              RiskAssessmentLogRepository riskLogRepository,
+                              RiskLogBuffer riskLogBuffer,
                               StormCellResolver stormCellResolver,
                               NWSAlertService nwsAlertService,
                               MLPredictionService mlPredictionService) {
@@ -47,7 +51,7 @@ public class RiskScoringService {
         this.routeOptimizer = routeOptimizer;
         this.stormCellRepository = stormCellRepository;
         this.safeLocationRepository = safeLocationRepository;
-        this.riskLogRepository = riskLogRepository;
+        this.riskLogBuffer = riskLogBuffer;
         this.stormCellResolver = stormCellResolver;
         this.nwsAlertService = nwsAlertService;
         this.mlPredictionService = mlPredictionService;
@@ -75,9 +79,10 @@ public class RiskScoringService {
         List<SafeLocation> safeLocations = safeEntities.stream()
                 .map(e -> toSafeLocationModel(e, lat, lon)).toList();
 
-        // Fetch NWS alerts (real-time)
+        // Fetch NWS alerts (read-through cache backed by the DB)
+        List<WeatherAlertEntity> activeAlerts = List.of();
         try {
-            nwsAlertService.getActiveAlerts(lat, lon, DEFAULT_RADIUS_MILES);
+            activeAlerts = nwsAlertService.getActiveAlerts(lat, lon, DEFAULT_RADIUS_MILES);
         } catch (Exception e) {
             log.debug("NWS fetch skipped: {}", e.getMessage());
         }
@@ -111,25 +116,56 @@ public class RiskScoringService {
             log.debug("ML prediction skipped: {}", e.getMessage());
         }
 
-        // Log to DB if session exists
+        // An active NWS warning polygon containing the position sets a floor —
+        // a live warning must never be reported below its tier.
+        applyAlertFloor(risk, activeAlerts, lat, lon);
+
+        // Log asynchronously — batched inserts, never on the hot path
         if (session != null) {
-            try {
-                riskLogRepository.save(RiskAssessmentLogEntity.builder()
-                        .travelerSession(session)
-                        .overallScore(risk.getOverallScore())
-                        .tier(risk.getTier())
-                        .timeToIntersectionMinutes(risk.getTimeToIntersectionMinutes())
-                        .recommendedAction(risk.getRecommendedAction())
-                        .hazardType(risk.getHazardType())
-                        .alertMessage(risk.getAlertMessage())
-                        .computedAt(Instant.now())
-                        .build());
-            } catch (Exception e) {
-                log.warn("Failed to log risk assessment: {}", e.getMessage());
-            }
+            riskLogBuffer.offer(RiskAssessmentLogEntity.builder()
+                    .travelerSession(session)
+                    .overallScore(risk.getOverallScore())
+                    .tier(risk.getTier())
+                    .timeToIntersectionMinutes(risk.getTimeToIntersectionMinutes())
+                    .recommendedAction(risk.getRecommendedAction())
+                    .hazardType(risk.getHazardType())
+                    .alertMessage(risk.getAlertMessage())
+                    .computedAt(Instant.now())
+                    .build());
         }
 
         return risk;
+    }
+
+    private void applyAlertFloor(RiskAssessment risk, List<WeatherAlertEntity> alerts,
+                                 double lat, double lon) {
+        if (alerts.isEmpty()) {
+            return;
+        }
+        Point position = geometryFactory.createPoint(
+                new org.locationtech.jts.geom.Coordinate(lon, lat));
+        boolean inTornado = false;
+        boolean inAny = false;
+        for (WeatherAlertEntity alert : alerts) {
+            if (alert.getPolygon() != null && alert.getPolygon().contains(position)) {
+                inAny = true;
+                if (alert.getHazardType() == HazardType.TORNADO) {
+                    inTornado = true;
+                }
+            }
+        }
+        if (inTornado && risk.getOverallScore() < 70.0) {
+            risk.setOverallScore(70.0);
+            risk.setTier(AlertTier.IMMEDIATE_DANGER);
+            risk.setHazardType(HazardType.TORNADO);
+            risk.setAlertMessage(
+                    "Active NWS tornado warning covers your location. Seek sturdy shelter immediately.");
+        } else if (inAny && risk.getOverallScore() < 35.0) {
+            risk.setOverallScore(35.0);
+            if (risk.getTier() == AlertTier.MONITORING || risk.getTier() == AlertTier.ADVISORY) {
+                risk.setTier(AlertTier.ACTION_REQUIRED);
+            }
+        }
     }
 
     private SafeLocation toSafeLocationModel(SafeLocationEntity entity, double fromLat, double fromLon) {

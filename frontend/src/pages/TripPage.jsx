@@ -47,7 +47,6 @@ export default function TripPage() {
 
   // ── Log mode on mount ──
   useEffect(() => {
-    console.log("MODE:", isDemo ? "DEMO" : "REAL");
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── DEMO MODE: simulation hook ──
@@ -57,7 +56,6 @@ export default function TripPage() {
     isDemo
   );
 
-  console.log('TripPage rendered, position:', sim.currentPosition, 'elapsed:', sim.elapsedMinutes, 'waypoints:', routeWaypoints.length);
 
   // Play audio alerts when demo tier changes
   useEffect(() => {
@@ -71,17 +69,13 @@ export default function TripPage() {
     if (!mode) { navigate('/'); return; }
 
     if (isDemo && scenario) {
-      console.log('TripPage: DEMO init, scenario:', scenario.name);
 
       if (scenario.routeWaypoints && scenario.routeWaypoints.length >= 2) {
-        console.log('TripPage: Using scenario routeWaypoints:', scenario.routeWaypoints.length, 'points');
         setRouteWaypoints(scenario.routeWaypoints);
         const distMiles = estimateRouteDistance(scenario.routeWaypoints);
         setRouteInfo({ distance: Math.round(distMiles), duration: Math.round(distMiles / 65 * 60) });
       } else {
-        console.log('TripPage: Fetching OSRM route for', scenario.route.from, '->', scenario.route.to);
         fetchRoute(scenario.route.from, scenario.route.to).then((result) => {
-          console.log('TripPage: OSRM returned', result.waypoints.length, 'waypoints');
           setRouteWaypoints(result.waypoints);
           setRouteInfo({ distance: result.distanceMiles, duration: result.durationMinutes });
         });
@@ -266,7 +260,6 @@ export default function TripPage() {
           shelters={displayShelters}
           alternateRoute={altRoute}
           onAction={(act) => {
-            console.log('User action:', act);
             // In demo: action is acknowledged visually in the banner
             // In real: would trigger backend reroute/navigation
           }}

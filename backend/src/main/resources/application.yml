@@ -17,19 +17,34 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   graphql:
     graphiql:
-      enabled: true
+      enabled: ${GRAPHIQL_ENABLED:false}
     websocket:
       path: /subscriptions
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never
+
+weatherwise:
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  risk-log-flush-ms: ${RISK_LOG_FLUSH_MS:5000}
+
 nws:
+  poll-interval-ms: ${NWS_POLL_INTERVAL_MS:60000}
   api:
     base-url: https://api.weather.gov
-    user-agent: "WeatherWise/1.0 (contact@weatherwise.dev)"
+    user-agent: ${NWS_USER_AGENT:WeatherWise/1.0 (github.com/poojithg14/weatherwise-framework)}
 
 ml:
   service:
-    url: http://localhost:5000
+    url: ${ML_SERVICE_URL:http://localhost:5000}
 
 osrm:
   api:
-    url: http://router.project-osrm.org
+    url: ${OSRM_URL:http://router.project-osrm.org}
